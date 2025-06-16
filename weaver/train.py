@@ -830,7 +830,9 @@ def iotest(args, data_loader):
     monitor_info = defaultdict(list)
 
     for X, y, Z in tqdm(data_loader):
-        for k, v in Z.items():
+        for k, v in X.items():
+            monitor_info[k].append(v)
+        for k, v in y.items():
             monitor_info[k].append(v)
     monitor_info = {k: _concat(v) for k, v in monitor_info.items()}
     if monitor_info:
