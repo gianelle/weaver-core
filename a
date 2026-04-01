@@ -1,0 +1,132 @@
+diff -Bur ./.git/config /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/config
+--- ./.git/config	2026-04-01 13:41:29.832984271 +0200
++++ /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/config	2025-09-17 12:03:49.176860517 +0200
+@@ -4,7 +4,7 @@
+ 	bare = false
+ 	logallrefupdates = true
+ [remote "origin"]
+-	url = git@github.com:gianelle/weaver-core.git
++	url = git@github.com:hqucms/weaver-core.git
+ 	fetch = +refs/heads/*:refs/remotes/origin/*
+ [branch "main"]
+ 	remote = origin
+diff -Bur ./.git/hooks/pre-commit.sample /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/hooks/pre-commit.sample
+--- ./.git/hooks/pre-commit.sample	2026-04-01 13:41:27.747975153 +0200
++++ /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/hooks/pre-commit.sample	2025-09-17 12:03:48.890857406 +0200
+@@ -28,7 +28,7 @@
+ 	# Note that the use of brackets around a tr range is ok here, (it's
+ 	# even required, for portability to Solaris 10's /usr/bin/tr), since
+ 	# the square bracket bytes happen to fall in the designated range.
+-	test $(git diff-index --cached --name-only --diff-filter=A -z $against |
++	test $(git diff --cached --name-only --diff-filter=A -z $against |
+ 	  LC_ALL=C tr -d '[ -~]\0' | wc -c) != 0
+ then
+ 	cat <<\EOF
+Only in ./.git/hooks: sendemail-validate.sample
+Binary files ./.git/index and /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/index differ
+diff -Bur ./.git/logs/HEAD /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/logs/HEAD
+--- ./.git/logs/HEAD	2026-04-01 13:41:29.825984241 +0200
++++ /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/logs/HEAD	2025-09-17 12:03:49.203860813 +0200
+@@ -1 +1 @@
+-0000000000000000000000000000000000000000 ddb47cae6e967bee742c3b7fa4a1b183d8e8134e Gianelle <gianelle@pd.infn.it> 1775043689 +0200	clone: from github.com:gianelle/weaver-core.git
++0000000000000000000000000000000000000000 9b92955bc89ecada29f5d4e6b9a21f4f0a28f8c5 Gianelle <gianelle@pd.infn.it> 1749719240 +0200	clone: from github.com:hqucms/weaver-core.git
+diff -Bur ./.git/logs/refs/heads/main /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/logs/refs/heads/main
+--- ./.git/logs/refs/heads/main	2026-04-01 13:41:29.826984245 +0200
++++ /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/logs/refs/heads/main	2025-09-17 12:03:49.200860780 +0200
+@@ -1 +1 @@
+-0000000000000000000000000000000000000000 ddb47cae6e967bee742c3b7fa4a1b183d8e8134e Gianelle <gianelle@pd.infn.it> 1775043689 +0200	clone: from github.com:gianelle/weaver-core.git
++0000000000000000000000000000000000000000 9b92955bc89ecada29f5d4e6b9a21f4f0a28f8c5 Gianelle <gianelle@pd.infn.it> 1749719240 +0200	clone: from github.com:hqucms/weaver-core.git
+diff -Bur ./.git/logs/refs/remotes/origin/HEAD /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/logs/refs/remotes/origin/HEAD
+--- ./.git/logs/refs/remotes/origin/HEAD	2026-04-01 13:41:29.818984210 +0200
++++ /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/logs/refs/remotes/origin/HEAD	2025-09-17 12:03:49.194860715 +0200
+@@ -1 +1 @@
+-0000000000000000000000000000000000000000 ddb47cae6e967bee742c3b7fa4a1b183d8e8134e Gianelle <gianelle@pd.infn.it> 1775043689 +0200	clone: from github.com:gianelle/weaver-core.git
++0000000000000000000000000000000000000000 9b92955bc89ecada29f5d4e6b9a21f4f0a28f8c5 Gianelle <gianelle@pd.infn.it> 1749719240 +0200	clone: from github.com:hqucms/weaver-core.git
+Only in /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/objects/pack: pack-4441de1685590438115a2d14de795469b3b698d7.idx
+Only in /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/objects/pack: pack-4441de1685590438115a2d14de795469b3b698d7.pack
+Only in ./.git/objects/pack: pack-61be1fb2b2ab30114efc0881168394e6dd21fe26.idx
+Only in ./.git/objects/pack: pack-61be1fb2b2ab30114efc0881168394e6dd21fe26.pack
+Only in ./.git/objects/pack: pack-61be1fb2b2ab30114efc0881168394e6dd21fe26.rev
+diff -Bur ./.git/packed-refs /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/packed-refs
+--- ./.git/packed-refs	2026-04-01 13:41:29.785984065 +0200
++++ /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/packed-refs	2025-09-17 12:03:49.180860561 +0200
+@@ -1,2 +1,36 @@
+ # pack-refs with: peeled fully-peeled sorted 
+-ddb47cae6e967bee742c3b7fa4a1b183d8e8134e refs/remotes/origin/main
++d8d9d85a53a1aaeaf6bc6ea098bf060e5792a304 refs/remotes/origin/dev/ParT-ee
++c97de3c83d2bc74d2b444d5afa24d4696e8be860 refs/remotes/origin/dev/custom_train_eval
++9b92955bc89ecada29f5d4e6b9a21f4f0a28f8c5 refs/remotes/origin/main
++b014b2973bbc1a2c9c465741485de929dd3d7f00 refs/remotes/origin/pr/colizz/19
++df53b47f7ce3e0784b3226216a0dbc6b1deb543b refs/tags/v0.3.1
++58e69f9fd4ddc3528bce2374f8418dc6e217f776 refs/tags/v0.3.2
++63837b92c75e999a6fc823d6b92bada4c622c8e3 refs/tags/v0.3.2.patch1
++3045f31d7d254db3864e4e309c8a278669952d6c refs/tags/v0.3.3
++f2df350f7b148baf22901f174c90304b6b2860a5 refs/tags/v0.3.4
++fe8bf87082c319f1c330fb5e6865efbcf0b7a898 refs/tags/v0.3.5
++9254354f171f6ca0875272c15fab746e9dcae8ba refs/tags/v0.3.6
++6bcb81c01b71e0dfdb9caab4e7b7e9c17da8fe75 refs/tags/v0.3.7
++b1ec9d5ee524e1fd544eaaf5c3af77a9f36e5b29 refs/tags/v0.3.7.patch1
++b1ec9d5ee524e1fd544eaaf5c3af77a9f36e5b29 refs/tags/v0.3.8
++9beefecff5083e5249c3e9a2703701aa8e09d3e8 refs/tags/v0.3.8.patch1
++646a9408b776e7dcf9c21324ff2b28153b472162 refs/tags/v0.3.9
++2eee3db38197a67917bc1140b8b1703ef9715c21 refs/tags/v0.4.0
++312e8ff117071684a2254b8a88e5c8af146a9fee refs/tags/v0.4.0.patch1
++6678c6249cf82df98043a3c3ee0c493afa47f88e refs/tags/v0.4.1
++7be2906c826698e0586393320f7d63094df9b347 refs/tags/v0.4.10
++2ea53af76f311c47b5ef416f8f5b5429ec1f10ae refs/tags/v0.4.11
++e81e9f3928a328e72d62ec1dbdd3acb99ca011d1 refs/tags/v0.4.12
++59235a5a450bbceec18054e4ff930d60f493a069 refs/tags/v0.4.13
++70b4e43700e6f5f6fd5921a84465ad78c62a0364 refs/tags/v0.4.14
++5a88c203cf094041a6097a3867dea456b90be5c2 refs/tags/v0.4.15
++7565c9efc18b26d2fa40d5edc4a0b3ecf2b28cba refs/tags/v0.4.16
++9b92955bc89ecada29f5d4e6b9a21f4f0a28f8c5 refs/tags/v0.4.17
++6a74ce6b86d98015601fcd2ad53a7710588fd252 refs/tags/v0.4.2
++9c4b72f864806ca21a2effb2967aacacb4da4b68 refs/tags/v0.4.3
++741c187ba12410e91d85a712b2070185499ac6d5 refs/tags/v0.4.4
++7f89e71f4221cc2110cff3ae33554e45a29a2924 refs/tags/v0.4.5
++077c6abe94494211660255f5535fdcdd32b73aec refs/tags/v0.4.6
++5f9babe7710ed0843e4fd2083b224c8af95c40b6 refs/tags/v0.4.7
++59f0c6b2dab5a92b1e0afcaf4dc7e3464014f596 refs/tags/v0.4.8
++a16973f4644a962fd56c60cb942e4e093a1d4484 refs/tags/v0.4.9
+diff -Bur ./.git/refs/heads/main /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/refs/heads/main
+--- ./.git/refs/heads/main	2026-04-01 13:41:29.824984236 +0200
++++ /lhcbdata/users/gianelle/ML/weaver/weaver-core/.git/refs/heads/main	2025-09-17 12:03:48.960858167 +0200
+@@ -1 +1 @@
+-ddb47cae6e967bee742c3b7fa4a1b183d8e8134e
++9b92955bc89ecada29f5d4e6b9a21f4f0a28f8c5
+Only in .: a
+Only in /lhcbdata/users/gianelle/ML/weaver/weaver-core/weaver: __pycache__
+Only in /lhcbdata/users/gianelle/ML/weaver/weaver-core/weaver/nn: __pycache__
+Only in /lhcbdata/users/gianelle/ML/weaver/weaver-core/weaver/nn/model: __pycache__
+Only in /lhcbdata/users/gianelle/ML/weaver/weaver-core/weaver/utils: __pycache__
+Only in /lhcbdata/users/gianelle/ML/weaver/weaver-core/weaver/utils/data: __pycache__
+diff -Bur ./weaver/utils/lr_finder.py /lhcbdata/users/gianelle/ML/weaver/weaver-core/weaver/utils/lr_finder.py
+--- ./weaver/utils/lr_finder.py	2026-04-01 13:41:30.006985031 +0200
++++ /lhcbdata/users/gianelle/ML/weaver/weaver-core/weaver/utils/lr_finder.py	2025-09-17 12:03:49.617865319 +0200
+@@ -522,4 +522,4 @@
+     next = __next__
+ 
+     def get_batch(self):
+-        return next(self)
+\ No newline at end of file
++        return next(self)
+Only in /lhcbdata/users/gianelle/ML/weaver/weaver-core/weaver/utils/nn: __pycache__
+Only in /lhcbdata/users/gianelle/ML/weaver/weaver-core/weaver/utils/nn/optimizer: __pycache__
+diff -Bur ./weaver/utils/nn/tools.py /lhcbdata/users/gianelle/ML/weaver/weaver-core/weaver/utils/nn/tools.py
+--- ./weaver/utils/nn/tools.py	2026-04-01 13:41:30.016985074 +0200
++++ /lhcbdata/users/gianelle/ML/weaver/weaver-core/weaver/utils/nn/tools.py	2026-03-31 11:36:03.248714808 +0200
+@@ -24,11 +24,11 @@
+         # `label` and `mask` are provided as function arguments
+         preds = model_output
+     else:
+-        if len(model_output == 2):
++        if len(model_output) == 2:
+             # use `mask` from model_output instead
+             # `label` still provided as function argument
+             preds, mask = model_output
+-        elif len(model_output == 3):
++        elif len(model_output) == 3:
+             # use `label` and `mask` from model output
+             preds, label, mask = model_output
+ 
+Only in /lhcbdata/users/gianelle/ML/weaver/weaver-core/: weaver_core.egg-info
