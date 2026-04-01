@@ -1,6 +1,7 @@
 import numpy as np
 import yaml
 import copy
+import itertools
 
 from ..logger import _logger
 from .tools import _get_variable_names
@@ -41,6 +42,8 @@ class DataConfig(object):
             'new_variables': {},
             'inputs': {},
             'labels': {},
+            'targets': {},
+            'labels_domain': {},
             'observers': [],
             'monitor_variables': [],
             'weights': None,
@@ -56,11 +59,12 @@ class DataConfig(object):
         if print_info:
             _logger.debug(opts)
 
+        #
         self.train_load_branches = set()
         self.train_aux_branches = set()
         self.test_load_branches = set()
         self.test_aux_branches = set()
-
+        # 
         self.selection = opts['selection']
         self.test_time_selection = opts['test_time_selection'] if opts['test_time_selection'] else self.selection
         self.var_funcs = copy.deepcopy(opts['new_variables'])
@@ -87,9 +91,17 @@ class DataConfig(object):
                         except IndexError:
                             return default
 
-                    params = {'length': o['length'], 'pad_mode': o.get('pad_mode', 'constant').lower(),
+                    params = {'length': o['length'],
+                              'pad_mode': o.get('pad_mode', 'constant').lower(),
                               'center': _get(1, 'auto' if self._auto_standardization else None),
-                              'scale': _get(2, 1), 'min': _get(3, -5), 'max': _get(4, 5), 'pad_value': _get(5, 0)}
+                              'scale': _get(2, 1),
+                              'min': _get(3, -5),
+                              'max': _get(4, 5),
+                              'eps_min': _get(5,None),
+                              'eps_max': _get(6,None),
+                              'pad_value': _get(7,0)
+                    }
+                    
                     if v[0] in self.preprocess_params and params != self.preprocess_params[v[0]]:
                         raise RuntimeError(
                             'Incompatible info for variable %s, had: \n  %s\nnow got:\n  %s' %
@@ -100,25 +112,99 @@ class DataConfig(object):
                         self._missing_standardization_info = True
                     self.preprocess_params[v[0]] = params
         # labels
-        self.label_type = opts['labels']['type']
-        self.label_value = opts['labels']['value']
-        if self.label_type == 'simple':
-            assert (isinstance(self.label_value, list))
-            self.label_names = ('_label_',)
-            label_exprs = ['ak.to_numpy(%s)' % k for k in self.label_value]
-            self.register('_label_', 'np.argmax(np.stack([%s], axis=1), axis=1)' % (','.join(label_exprs)))
-            self.register('_labelcheck_', 'np.sum(np.stack([%s], axis=1), axis=1)' % (','.join(label_exprs)), 'train')
+        if opts['labels']:
+            self.label_type = opts['labels']['type']
+            self.label_value = opts['labels']['value']
+            if self.label_type == 'simple':
+                assert(isinstance(self.label_value, list))
+                self.label_names = ('_label_',)
+                self.labelcheck_names = ('_labelcheck_',)
+                label_exprs = ['ak.to_numpy(%s)' % k for k in self.label_value]
+                self.register('_label_', 'np.argmax(np.stack([%s], axis=1), axis=1)' % (','.join(label_exprs)))
+                self.register('_labelcheck_', 'np.sum(np.stack([%s], axis=1), axis=1)' % (','.join(label_exprs)))
+            else:
+                self.label_names = tuple(self.label_value.keys())
+                self.register(self.label_value)
+                self.labelcheck_names = None;
+            if 'sample_weight' in opts['labels']:
+                self.label_sample_weight = opts['labels']['sample_weight']            
+                self.label_sample_weight_names = tuple(self.label_sample_weight)
+                self.register(self.label_sample_weight);
+            else:
+                self.label_sample_weight = None;
+                self.label_sample_weight_names = None;                                
+            if 'class_weight' in opts['labels']:
+                self.label_class_weight = opts['labels']['class_weight']            
+                self.label_class_weight_names = tuple(self.label_class_weight)
+            else:
+                self.label_class_weight = None;
+                self.label_class_weight_names = None;                                
         else:
-            self.label_names = tuple(self.label_value.keys())
-            self.register(self.label_value)
+            self.label_names = tuple();
+            self.label_type  = None;
+            self.label_value = None;
+            self.labelcheck_names = None;
+            self.label_sample_weight = None;
+            self.label_sample_weight_names = None;
+            self.label_class_weight = None;
+            self.label_class_weight_names = None;
+
+        ## domain
+        if opts['labels_domain']:
+            self.label_domain_type = opts['labels_domain']['type']
+            self.label_domain_value = opts['labels_domain']['value']
+            self.label_domain_loss_weight = None
+            if self.label_domain_type == 'simple':
+                assert(isinstance(self.label_domain_value, list))
+                self.label_domain_names = ('_label_domain_',)
+                self.labelcheck_domain_names = ('_labelcheck_domain_',)
+                label_exprs = ['ak.to_numpy(%s)' % k for k in self.label_domain_value]
+                self.register('_label_domain_', 'np.argmax(np.stack([%s], axis=1), axis=1)' % (','.join(label_exprs)))
+                self.register('_labelcheck_domain_', 'np.sum(np.stack([%s], axis=1), axis=1)' % (','.join(label_exprs)))
+            else:
+                self.label_domain_names = tuple(self.label_domain_value.keys())                
+                self.labelcheck_domain_names = ()
+                self.label_domain_loss_weight = opts['labels_domain']['loss_weight']            
+                label_check_exprs = [];
+                for key, value in self.label_domain_value.items():
+                    label_exprs = ['ak.to_numpy(%s)' % k for k in value]
+                    label_check_exprs.append(label_exprs);                    
+                    self.register(key, 'np.argmax(np.stack([%s], axis=1), axis=1)' % (','.join(label_exprs)))
+                    self.labelcheck_domain_names += (key.replace('label','labelcheck'),);
+                    self.register(key.replace('label','labelcheck'),'np.sum(np.stack([%s], axis=1), axis=1)' % (','.join(label_exprs)))
+                self.register('_labelcheck_domain_','np.sum(np.stack([%s], axis=1), axis=1)' % (','.join(','.join(value) for value in label_check_exprs)))
+        else:
+            self.label_domain_names = tuple();
+            self.label_domain_type  = None;
+            self.label_domain_value = None;
+            self.labelcheck_domain_names = None;
+            self.label_domain_loss_weight = None;
+                
+        # targets
+        if opts['targets']:
+            self.target_type = opts['targets']['type']
+            self.target_value = opts['targets']['value']
+            if 'quantile' in opts['targets']:
+                self.target_quantile = opts['targets']['quantile']
+            else:
+                self.target_quantile = None;
+            self.target_names = tuple(self.target_value.keys())
+            self.register(self.target_value);
+        else:
+            self.target_names = tuple();
+            self.target_type  = None;
+            self.target_value = None;
+            self.target_quantile = None;
+
         self.basewgt_name = '_basewgt_'
-        self.weight_name = None
+        self.weight_name = None        
         if opts['weights'] is not None:
-            self.weight_name = '_weight_'
+            self.weight_name = 'weight_'
             self.use_precomputed_weights = opts['weights']['use_precomputed_weights']
             if self.use_precomputed_weights:
                 self.register(self.weight_name, '*'.join(opts['weights']['weight_branches']), 'train')
             else:
+                ## re-weight
                 self.reweight_method = opts['weights']['reweight_method']
                 self.reweight_basewgt = opts['weights'].get('reweight_basewgt', None)
                 if self.reweight_basewgt:
@@ -129,13 +215,23 @@ class DataConfig(object):
                 self.register(self.reweight_branches + self.reweight_classes, to='train')
                 self.class_weights = opts['weights'].get('class_weights', None)
                 if self.class_weights is None:
-                    self.class_weights = np.ones(len(self.reweight_classes))
+                    self.class_weights = np.ones(len(self.reweight_classes))                    
                 self.reweight_threshold = opts['weights'].get('reweight_threshold', 10)
                 self.reweight_discard_under_overflow = opts['weights'].get('reweight_discard_under_overflow', True)
                 self.reweight_hists = opts['weights'].get('reweight_hists', None)
                 if self.reweight_hists is not None:
                     for k, v in self.reweight_hists.items():
                         self.reweight_hists[k] = np.array(v, dtype='float32')
+            ## domain part
+            if 'domain_classes' in opts['weights']:
+                self.domain_classes = tuple(opts['weights']['domain_classes'])
+                self.domain_weights = opts['weights'].get('domain_weights', None)
+                if self.domain_weights is None:
+                    self.domain_weights = np.ones(len(self.domain_classes))
+            else:
+                self.domain_classes = None
+                self.domain_weights = None
+
         # observers
         self.observer_names = tuple(opts['observers'])
         # monitor variables
@@ -144,7 +240,6 @@ class DataConfig(object):
             raise RuntimeError('Cannot set `observers` and `monitor_variables` at the same time.')
         # Z variables: returned as `Z` in the dataloader (use monitor_variables for training, observers for eval)
         self.z_variables = self.observer_names if len(self.observer_names) > 0 else self.monitor_variables
-
         # remove self mapping from var_funcs
         for k, v in self.var_funcs.items():
             if k == v:
@@ -161,7 +256,20 @@ class DataConfig(object):
             _log('input_dicts:\n - %s', '\n - '.join(str(it) for it in self.input_dicts.items()))
             _log('input_shapes:\n - %s', '\n - '.join(str(it) for it in self.input_shapes.items()))
             _log('preprocess_params:\n - %s', '\n - '.join(str(it) for it in self.preprocess_params.items()))
-            _log('label_names: %s', str(self.label_names))
+            if self.label_names: 
+                _log('label_names: %s', str(self.label_names))
+            if self.label_sample_weight_names: 
+                _log('label_sample_weight_names: %s', str(self.label_sample_weight_names))
+            if self.label_class_weight_names: 
+                _log('label_class_weight_names: %s', str(self.label_class_weight_names))
+            if self.target_names: 
+                _log('target_names: %s', str(self.target_names))
+            if self.target_quantile:
+                _log('target_quantile: %s',' '.join([str(elem) for elem in self.target_quantile])) 
+            if self.label_domain_names: 
+                _log('label_domain_names: %s', str(self.label_domain_names))
+            if self.label_domain_loss_weight:
+                _log('self.label_domain_loss_weight: %s',' '.join([str(elem) for elem in self.label_domain_loss_weight]))
             _log('observer_names: %s', str(self.observer_names))
             _log('monitor_variables: %s', str(self.monitor_variables))
             if opts['weights'] is not None:
@@ -169,10 +277,13 @@ class DataConfig(object):
                     _log('weight: %s' % self.var_funcs[self.weight_name])
                 else:
                     for k in ['reweight_method', 'reweight_basewgt', 'reweight_branches', 'reweight_bins',
-                              'reweight_classes', 'class_weights', 'reweight_threshold',
-                              'reweight_discard_under_overflow']:
+                              'reweight_classes', 'class_weights', 'reweight_threshold',  'reweight_discard_under_overflow',
+                              'domain_classes', 'domain_weights']:
                         _log('%s: %s' % (k, getattr(self, k)))
 
+        # parse config
+        self.keep_branches = set()
+        aux_branches = set()
         # selection
         if self.selection:
             self.register(_get_variable_names(self.selection), to='train')
@@ -186,6 +297,7 @@ class DataConfig(object):
         self.register(self.observer_names, to='test')
         # monitor variables
         self.register(self.monitor_variables)
+        self.keep_branches.update(self.monitor_variables)
         # resolve dependencies
         func_vars = set(self.var_funcs.keys())
         for (load_branches, aux_branches) in (self.train_load_branches, self.train_aux_branches), (self.test_load_branches, self.test_aux_branches):
@@ -222,7 +334,7 @@ class DataConfig(object):
                     self.train_aux_branches.add(name)
                 if to in ('test', 'both'):
                     self.test_aux_branches.add(name)
-
+    
     def dump(self, fp):
         with open(fp, 'w') as f:
             yaml.safe_dump(self.options, f, sort_keys=False)
@@ -235,7 +347,7 @@ class DataConfig(object):
         if not load_observers:
             options['observers'] = None
         if not load_reweight_info:
-            options['weights'] = None
+             options['weights'] = None
         if extra_selection:
             options['selection'] = '(%s) & (%s)' % (_opts['selection'], extra_selection)
         if extra_test_selection:
@@ -254,17 +366,33 @@ class DataConfig(object):
     def __deepcopy__(self, memo):
         return self.copy()
 
-    def export_json(self, fp):
+    def export_json(self, fp, add_da=False):
         import json
-        j = {'output_names': self.label_value, 'input_names': self.input_names}
+        ## class+reg+domain        
+        if self.target_names and self.label_names and self.label_domain_names:
+            if add_da:
+                j = {'output_names':self.label_value+list(self.target_value.keys())+list(itertools.chain.from_iterable(self.label_domain_value.values())), 'input_names':self.input_names}  
+            else:
+                j = {'output_names':self.label_value+list(self.target_value.keys()), 'input_names':self.input_names}
+        ## class+reg
+        elif self.target_names and self.label_names and not self.label_domain_names:
+            j = {'output_names':self.label_value+list(self.target_value.keys()), 'input_names':self.input_names}
+        ## class
+        elif not self.target_names and not self.label_domain_names and self.label_names:
+            j = {'output_names':self.label_value, 'input_names':self.input_names}
+        ## regression
+        elif self.target_names and not self.label_names and not self.label_domain_names:
+            j = {'output_names':list(self.target_value.keys()), 'input_names':self.input_names}
+
         for k, v in self.input_dicts.items():
             j[k] = {'var_names': v, 'var_infos': {}}
             for var_name in v:
-                j[k]['var_length'] = self.preprocess_params[var_name]['length']
+                j[k]['min_length'] = 1
+                j[k]['max_length'] = self.preprocess_params[var_name]['length']
                 info = self.preprocess_params[var_name]
                 j[k]['var_infos'][var_name] = {
                     'median': 0 if info['center'] is None else info['center'],
-                    'norm_factor': info['scale'],
+                    'norm_factor': 1 if info['scale'] is None else info['scale'],
                     'replace_inf_value': 0,
                     'lower_bound': -1e32 if info['center'] is None else info['min'],
                     'upper_bound': 1e32 if info['center'] is None else info['max'],

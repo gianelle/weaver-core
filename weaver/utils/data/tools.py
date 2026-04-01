@@ -49,10 +49,11 @@ def _pad(a, maxlen, value=0, dtype='float32'):
 
 def _repeat_pad(a, maxlen, shuffle=False, dtype='float32'):
     x = ak.to_numpy(ak.flatten(a))
-    x = np.tile(x, int(np.ceil(len(a) * maxlen / len(x))))
-    if shuffle:
-        np.random.shuffle(x)
-    x = x[:len(a) * maxlen].reshape((len(a), maxlen))
+    if len(x) > 0:
+        x = np.tile(x, int(np.ceil(len(a) * maxlen / len(x))))
+        if shuffle:
+            np.random.shuffle(x)
+        x = x[:len(a) * maxlen].reshape((len(a), maxlen))
     mask = _pad(ak.zeros_like(a), maxlen, value=1)
     x = _pad(a, maxlen) + mask * x
     return ak.values_astype(x, dtype)
@@ -83,19 +84,16 @@ def _batch_knn(supports, queries, k, maxlen_s, maxlen_q=None, n_jobs=1):
     return batch_knn_idx
 
 
-def _batch_permute_indices(array):
+def _batch_permute_indices(array, maxlen):
     random_array = ak.unflatten(np.random.rand(ak.count(array)), ak.num(array))
     return ak.argsort(random_array)
 
-
 def _batch_argsort(array):
     return ak.argsort(array)
-
-
+ 
 def _batch_gather(array, indices):
-    return array[indices]
-
-
+     return array[indices]
+ 
 def _p4_from_pxpypze(px, py, pz, energy):
     import vector
     vector.register_awkward()

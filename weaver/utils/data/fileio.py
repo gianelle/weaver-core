@@ -51,8 +51,8 @@ def _read_root(filepath, branches, load_range=None, treename=None, branch_magic=
                     outputs[name] = outputs[decoded_name]
         else:
             outputs = tree.arrays(filter_name=branches, entry_start=start, entry_stop=stop)
-    return outputs
 
+    return outputs
 
 def _read_awkd(filepath, branches, load_range=None):
     import awkward0
@@ -125,8 +125,8 @@ def _write_root(file, table, treename='Events', compression=-1, step=1048576):
     if compression == -1:
         compression = uproot.LZ4(4)
     with uproot.recreate(file, compression=compression) as fout:
-        tree = fout.mktree(treename, {k: table[k].type for k in table.fields})
+        tree = fout.mktree(treename, {k: v.dtype for k, v in table.items()})
         start = 0
-        while start < len(table[table.fields[0]]) - 1:
-            tree.extend({k: table[k][start:start + step] for k in table.fields})
+        while start < len(list(table.values())[0]) - 1:
+            tree.extend({k: v[start:start + step] for k, v in table.items()})
             start += step

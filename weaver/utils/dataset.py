@@ -16,17 +16,46 @@ from .data.preprocess import _apply_selection, _build_new_variables, _build_weig
 
 def _collate_awkward_array_fn(batch, *, collate_fn_map=None):
     return _stack(batch, axis=0)
-
-
+ 
 def _finalize_inputs(table, data_config):
+
     output = {}
+
     # copy observer variables before transformation
     for k in data_config.z_variables:
         if k in data_config.observer_names:
-            output[k] = table[k]  # ak.Array
+            a = ak.to_numpy(table[k])
+            if a.dtype == np.uint16:
+                output[k] = a.astype('int16')
+            elif a.dtype == np.uint32:
+                output[k] = a.astype('int32')
+            elif a.dtype == np.uint64:
+                output[k] = a.astype('int64')
+            else:
+                output[k] = table[k]
+            
     # copy labels
-    for k in data_config.label_names:
-        output[k] = ak.to_numpy(table[k])
+    if data_config.label_names:
+        for k in data_config.label_names:
+            output[k] = ak.to_numpy(table[k])
+    if data_config.target_names:
+        for k in data_config.target_names:
+            output[k] = ak.to_numpy(table[k])
+    if data_config.label_domain_names:
+        for k in data_config.label_domain_names:
+            output[k] = ak.to_numpy(table[k])
+    if data_config.label_sample_weight_names:
+        for k in data_config.label_sample_weight_names:
+            output[k] = ak.to_numpy(table[k])
+            
+    # copy labelcheck
+    if data_config.labelcheck_names:
+        for k in data_config.labelcheck_names:
+            output[k] = ak.to_numpy(table[k])
+    if data_config.labelcheck_domain_names:
+        for k in data_config.labelcheck_domain_names:
+            output[k] = ak.to_numpy(table[k])
+            
     # transformation
     for k, params in data_config.preprocess_params.items():
         if data_config._auto_standardization and params['center'] == 'auto':
@@ -43,31 +72,63 @@ def _finalize_inputs(table, data_config):
             table[k] = np.nan_to_num(table[k])
     # stack variables for each input group
     for k, names in data_config.input_dicts.items():
-        if len(names) == 1 and data_config.preprocess_params[names[0]]['length'] is None:
+        if len(names) == 1 and data_config.preprocess_params[names[0]]['length'] is None:            
             output['_' + k] = ak.to_numpy(ak.values_astype(table[names[0]], 'float32'))
         else:
-            output['_' + k] = ak.to_numpy(np.stack([ak.to_numpy(table[n]).astype('float32') for n in names], axis=1))
-    # copy monitor variables (after transformation)
+            a = [ak.to_numpy(table[n]).astype('float32') for n in names];
+            if len(a) > 0:
+                output['_' + k] = ak.to_numpy(np.stack(a,axis=1))
+            else:
+                output['_' + k] = ak.to_numpy([]);
+    # copy monitor variables
     for k in data_config.z_variables:
         if k in data_config.monitor_variables:
-            output[k] = table[k]  # ak.Array
+            output[k] = table[k]
     return output
 
 
-def _get_reweight_indices(weights, up_sample=True, max_resample=10, weight_scale=1):
-    all_indices = np.arange(len(weights))
-    randwgt = np.random.uniform(low=0, high=weight_scale, size=len(weights))
-    keep_flags = randwgt < weights
+def _get_reweight_indices(weights, up_sample=True, max_resample=10, weight_scale=1, domain_classes=None, domain_weights=None):
+
+    ## separate domain events from normal ones
+    indices_cat = np.argwhere(weights>=0).squeeze();
+    weights_cat = weights[indices_cat].squeeze();
+    randwgt_cat = np.random.uniform(low=0, high=weight_scale, size=len(weights_cat))
+    keep_flags_cat  = randwgt_cat < weights_cat
     if not up_sample:
-        keep_indices = all_indices[keep_flags]
+        keep_indices_cat = indices_cat[keep_flags_cat]
+        indices_dom = np.argwhere(weights<0).squeeze();
+        weights_dom = weights[indices_dom].squeeze();
+        randwgt_dom = np.random.uniform(low=0, high=weight_scale, size=len(weights_dom))
+        keep_flags_dom = randwgt_dom < np.absolute(weights_dom)
+        if not np.any(indices_dom):
+            return keep_indices_cat.copy()
+        keep_indices_dom = indices_dom[keep_flags_dom]
+        keep_indices = np.concatenate((keep_indices_cat,keep_indices_dom),axis=0)
+        return copy.deepcopy(keep_indices)
     else:
-        n_repeats = len(weights) // max(1, int(keep_flags.sum()))
+        n_repeats = len(weights_cat) // max(1, int(keep_flags_cat.sum()))
         if n_repeats > max_resample:
             n_repeats = max_resample
-        all_indices = np.repeat(np.arange(len(weights)), n_repeats)
-        randwgt = np.random.uniform(low=0, high=weight_scale, size=len(weights) * n_repeats)
-        keep_indices = all_indices[randwgt < np.repeat(weights, n_repeats)]
-    return copy.deepcopy(keep_indices)
+        indices_cat = np.repeat(indices_cat,n_repeats)
+        randwgt_cat = np.random.uniform(low=0, high=weight_scale, size=len(weights_cat) * n_repeats)
+        keep_indices_cat = indices_cat[randwgt_cat < np.repeat(weights_cat, n_repeats)]
+        if not domain_classes:
+            copy.deepcopy(keep_indices_cat)
+        
+        ## domain indexes
+        keep_indices = keep_indices_cat;
+        if domain_classes:
+            w_dom = list(dict.fromkeys(domain_classes))
+            for idx,value in enumerate(w_dom):
+                indices_dom = np.argwhere(weights==-1*(idx+1)).squeeze();
+                weights_dom = weights[indices_dom].squeeze();
+                randwgt_dom = np.random.uniform(low=0, high=weight_scale, size=len(weights_dom))
+                if np.any(indices_dom):
+                    indices_dom = np.repeat(indices_dom,domain_weights[idx])
+                    randwgt_dom = np.random.uniform(low=0, high=weight_scale, size=len(weights_dom)*domain_weights[idx])
+                    keep_indices_dom = indices_dom[randwgt_dom < np.repeat(np.absolute(weights_dom),domain_weights[idx])]
+                    keep_indices = np.concatenate((keep_indices,keep_indices_dom),axis=0)            
+        return copy.deepcopy(keep_indices)
 
 
 def _check_labels(table):
@@ -79,6 +140,14 @@ def _check_labels(table):
         if np.any(table['_labelcheck_'] > 1):
             raise RuntimeError('Inconsistent label definition: some of the entries are assigned to multiple classes!')
 
+def _check_labels_domain(table):
+    if np.all(table['_labelcheck_']+table['_labelcheck_domain_'] == 1):
+        return
+    else:
+        if np.any(table['_labelcheck_']+table['_labelcheck_domain_'] == 0):
+            raise RuntimeError('Inconsistent label definition: some of the entries are not assigned to any classes!')
+        if np.any(table['_labelcheck_']+table['_labelcheck_domain_']  > 1):
+            raise RuntimeError('Inconsistent label definition: some of the entries are assigned to multiple classes!')
 
 def _preprocess(table, data_config, options):
     # apply selection
@@ -86,27 +155,38 @@ def _preprocess(table, data_config, options):
         table, data_config.selection if options['training'] else data_config.test_time_selection,
         funcs=data_config.var_funcs)
     if len(table) == 0:
-        return []
+        return {} , []
+    
     # define new variables
     aux_branches = data_config.train_aux_branches if options['training'] else data_config.test_aux_branches
     table = _build_new_variables(table, {k: v for k, v in data_config.var_funcs.items() if k in aux_branches})
     # check labels
-    if data_config.label_type == 'simple' and options['training']:
+    if(data_config.label_domain_type is not None and data_config.label_type is not None and data_config.label_domain_type == 'simple' and options['training']):
+        _check_labels_domain(table)
+    elif (data_config.label_domain_type is None and data_config.label_type is not None and data_config.label_type == 'simple' and options['training']):
         _check_labels(table)
     # compute reweight indices
     if options['reweight'] and data_config.weight_name is not None:
         wgts = _build_weights(table, data_config)
-        indices = _get_reweight_indices(wgts, up_sample=options['up_sample'],
-                                        weight_scale=options['weight_scale'], max_resample=options['max_resample'])
+        indices = _get_reweight_indices(
+            wgts,
+            up_sample=options['up_sample'],
+            weight_scale=options['weight_scale'],
+            max_resample=options['max_resample'],
+            domain_classes=data_config.domain_classes,
+            domain_weights=data_config.domain_weights,
+        )
     else:
-        indices = np.arange(len(table[data_config.label_names[0]]))
+        if len(data_config.label_names) > 0:
+            indices = np.arange(len(table[data_config.label_names[0]]))
+        elif len(data_config.label_domain_names)> 0:
+            indices = np.arange(len(table[data_config.label_domain_names[0]]))
     # shuffle
     if options['shuffle']:
         np.random.shuffle(indices)
     # perform input variable standardization, clipping, padding and stacking
     table = _finalize_inputs(table, data_config)
     return table, indices
-
 
 def _load_next(data_config, filelist, load_range, options):
     load_branches = data_config.train_load_branches if options['training'] else data_config.test_load_branches
@@ -262,13 +342,46 @@ class _SimpleIter(object):
 
     def get_data(self, i):
         # inputs
-        X = {k: copy.deepcopy(self.table['_' + k][i]) for k in self._data_config.input_names}
-        # labels
-        y = {k: copy.deepcopy(self.table[k][i]) for k in self._data_config.label_names}
+        if self._data_config.input_names:
+            X = {k: copy.deepcopy(self.table['_' + k][i]) for k in self._data_config.input_names}
+        else:
+            X = {};
+        # labels for classification
+        if self._data_config.label_names:
+            y_cat = {k: copy.deepcopy(self.table[k][i]) for k in self._data_config.label_names}
+        else:
+            y_cat = {};
+        # target for regression
+        if self._data_config.target_names:
+            y_reg = {k: copy.deepcopy(self.table[k][i]) for k in self._data_config.target_names}
+        else:
+            y_reg = {};
+        # labels for classification
+        if self._data_config.label_sample_weight:
+            y_weight = {k: copy.deepcopy(self.table[k][i]) for k in self._data_config.label_sample_weight}
+        else:
+            y_weight = {};
+        # labels for domain
+        if self._data_config.label_domain_names:
+            y_domain = {k: copy.deepcopy(self.table[k][i]) for k in self._data_config.label_domain_names}        
+        else:
+            y_domain = {};
         # observers / monitor variables
-        Z = {k: copy.deepcopy(self.table[k][i]) for k in self._data_config.z_variables}
-        return X, y, Z
-
+        if self._data_config.z_variables:
+            Z = {k: copy.deepcopy(self.table[k][i]) for k in self._data_config.z_variables}
+        else:
+            Z = {};
+        # labelcheck for classificaiton
+        if self._data_config.labelcheck_names:
+            y_cat_check = {k: copy.deepcopy(self.table[k][i]) for k in self._data_config.labelcheck_names}
+        else:
+            y_cat_check = {};
+        # labelcheck for domain
+        if self._data_config.labelcheck_domain_names:
+            y_domain_check = {k: copy.deepcopy(self.table[k][i]) for k in self._data_config.labelcheck_domain_names}            
+        else:
+            y_domain_check = {};
+        return X, y_cat, y_reg, y_domain, Z, y_cat_check, y_domain_check, y_weight 
 
 class SimpleIterDataset(torch.utils.data.IterableDataset):
     r"""Base IterableDataset.
@@ -297,7 +410,7 @@ class SimpleIterDataset(torch.utils.data.IterableDataset):
     def __init__(self, file_dict, data_config_file,
                  for_training=True, load_range_and_fraction=None, extra_selection=None,
                  fetch_by_files=False, fetch_step=0.01, file_fraction=1, remake_weights=False, up_sample=True,
-                 weight_scale=1, max_resample=10, async_load=True, infinity_mode=False, in_memory=False, name=''):
+                 weight_scale=1, max_resample=10, max_resample_dom=3, async_load=True, infinity_mode=False, in_memory=False, name=''):
         self._iters = {} if infinity_mode or in_memory else None
         _init_args = set(self.__dict__.keys())
         self._init_file_dict = file_dict
@@ -315,12 +428,12 @@ class SimpleIterDataset(torch.utils.data.IterableDataset):
             'up_sample': up_sample,
             'weight_scale': weight_scale,
             'max_resample': max_resample,
+            'max_resample_dom': max_resample_dom,
         }
-
-        # ==== torch collate_fn map ====
+    
         from torch.utils.data._utils.collate import default_collate_fn_map
         default_collate_fn_map.update({ak.Array: _collate_awkward_array_fn})
-
+        
         if for_training:
             self._sampler_options.update(training=True, shuffle=True, reweight=True)
         else:
@@ -328,7 +441,7 @@ class SimpleIterDataset(torch.utils.data.IterableDataset):
 
         # discover auto-generated reweight file
         if '.auto.yaml' in data_config_file:
-            data_config_autogen_file = data_config_file
+             data_config_autogen_file = data_config_file
         else:
             data_config_md5 = _md5(data_config_file)
             data_config_autogen_file = data_config_file.replace('.yaml', '.%s.auto.yaml' % data_config_md5)
@@ -360,8 +473,7 @@ class SimpleIterDataset(torch.utils.data.IterableDataset):
                     data_config_file)
             self._data_config = DataConfig.load(data_config_file, load_observers=False, extra_selection=extra_selection)
         else:
-            self._data_config = DataConfig.load(
-                data_config_file, load_reweight_info=False, extra_test_selection=extra_selection)
+            self._data_config = DataConfig.load(data_config_file, load_reweight_info=False, extra_test_selection=extra_selection)
 
         # derive all variables added to self.__dict__
         self._init_args = set(self.__dict__.keys()) - _init_args

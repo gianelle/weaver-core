@@ -18,7 +18,6 @@ def _apply_selection(table, selection, funcs=None):
     selected = ak.values_astype(_eval_expr(selection, table), 'bool')
     return table[selected]
 
-
 def _build_new_variables(table, funcs):
     if funcs is None:
         return table
@@ -27,6 +26,11 @@ def _build_new_variables(table, funcs):
             continue
         table[k] = _eval_expr(expr, table)
     return table
+
+
+def _clean_up(table, drop_branches):
+    columns = [k for k in table.fields if k not in drop_branches]
+    return table[columns]
 
 
 def _build_weights(table, data_config, reweight_hists=None):
@@ -58,16 +62,21 @@ def _build_weights(table, data_config, reweight_hists=None):
                 rwgt_y_vals, y_bins) - 1, a_min=0, a_max=len(y_bins) - 2)
             wgt[pos] = hist[x_indices, y_indices]
             sum_evts += np.sum(pos)
+        ## loop oover the domain label and fix weights to 1 in order to be always sampled
+        if data_config.domain_classes:
+            for idx,label in enumerate(data_config.domain_classes):
+                pos = table[label] == 1
+                wgt[pos] = -1.*(idx+1);
+                sum_evts += np.sum(pos)
         if sum_evts != len(table):
             warn_n_times(
                 'Not all selected events used in the reweighting. '
-                'Check consistency between `selection` and `reweight_classes` definition, or with the `reweight_vars` binnings '
+                'Check consistency between `selection` and `reweight_classes` + `domain_classes` definition, or with the `reweight_vars` binnings '
                 '(under- and overflow bins are discarded by default, unless `reweight_discard_under_overflow` is set to `False` in the `weights` section).',
             )
         if data_config.reweight_basewgt:
             wgt *= ak.to_numpy(table[data_config.basewgt_name])
         return wgt
-
 
 class AutoStandardizer(object):
     r"""AutoStandardizer.
@@ -104,7 +113,7 @@ class AutoStandardizer(object):
                 aux_branches.add(k)
                 load_branches.remove(k)
                 load_branches.update(_get_variable_names(self._data_config.var_funcs[k]))
-
+                 
         _logger.debug('[AutoStandardizer] keep_branches:\n  %s', ','.join(keep_branches))
         _logger.debug('[AutoStandardizer] aux_branches:\n  %s', ','.join(aux_branches))
         _logger.debug('[AutoStandardizer] load_branches:\n  %s', ','.join(load_branches))
@@ -112,9 +121,12 @@ class AutoStandardizer(object):
         table = _read_files(filelist, load_branches, self.load_range, show_progressbar=True,
                             treename=self._data_config.treename,
                             branch_magic=self._data_config.branch_magic, file_magic=self._data_config.file_magic)
+       
         table = _apply_selection(table, self._data_config.selection, funcs=self._data_config.var_funcs)
+        
         table = _build_new_variables(table, {k: v for k, v in self._data_config.var_funcs.items() if k in aux_branches})
         table = table[keep_branches]
+         
         return table
 
     def make_preprocess_params(self, table):
@@ -144,7 +156,7 @@ class AutoStandardizer(object):
         table = self.read_file(self._filelist)
         preprocess_params = self.make_preprocess_params(table)
         self._data_config.preprocess_params = preprocess_params
-        # must also propagate the changes to `data_config.options` so it can be persisted
+        # must also propogate the changes to `data_config.options` so it can be persisted
         self._data_config.options['preprocess']['params'] = preprocess_params
         if output:
             _logger.info(
@@ -175,6 +187,7 @@ class WeightMaker(object):
             keep_branches.add(self._data_config.basewgt_name)
         aux_branches = set()
         load_branches = keep_branches.copy()
+
         if self._data_config.selection:
             load_branches.update(_get_variable_names(self._data_config.selection))
 
@@ -212,31 +225,41 @@ class WeightMaker(object):
         _logger.info('Using %d events to make weights', len(table))
 
         sum_evts = 0
+        class_evts = 0
+        domain_evts = 0
         max_weight = 0.9
         raw_hists = {}
         class_events = {}
         result = {}
+        ## loop on all reweight classes to define weights
         for label in self._data_config.reweight_classes:
             pos = (table[label] == 1)
             x = ak.to_numpy(table[x_var][pos])
             y = ak.to_numpy(table[y_var][pos])
             hist, _, _ = np.histogram2d(x, y, bins=self._data_config.reweight_bins)
             _logger.info('%s (unweighted):\n %s', label, str(hist.astype('int64')))
-            sum_evts += hist.sum()
+            class_evts += hist.sum()
             if self._data_config.reweight_basewgt:
                 w = ak.to_numpy(table[self._data_config.basewgt_name][pos])
                 hist, _, _ = np.histogram2d(x, y, weights=w, bins=self._data_config.reweight_bins)
                 _logger.info('%s (weighted):\n %s', label, str(hist.astype('float32')))
             raw_hists[label] = hist.astype('float32')
             result[label] = hist.astype('float32')
+        _logger.info("sum of events belonging to re-weight classes = %d "%(class_evts));
+        sum_evts += class_evts;
+        ## add back the domain adaptation events that must be excluded from re-weight
+        if self._data_config.domain_classes:
+            for label in self._data_config.domain_classes:
+                pos = table[label] == 1
+                domain_evts += np.sum(pos)
+        sum_evts += domain_evts;
+        _logger.info("sum of events belonging to domain classes = %d "%(domain_evts));
         if sum_evts != len(table):
             _logger.warning(
                 'Only %d (out of %d) events actually used in the reweighting. '
-                'Check consistency between `selection` and `reweight_classes` definition, or with the `reweight_vars` binnings '
+                'Check consistency between `selection` and `reweight_classes` + `domain_classes` definition, or with the `reweight_vars` binnings '
                 '(under- and overflow bins are discarded by default, unless `reweight_discard_under_overflow` is set to `False` in the `weights` section).',
                 sum_evts, len(table))
-            time.sleep(10)
-
         if self._data_config.reweight_method == 'flat':
             for label, classwgt in zip(self._data_config.reweight_classes, self._data_config.class_weights):
                 hist = result[label]
@@ -271,7 +294,6 @@ class WeightMaker(object):
 
         if self._data_config.reweight_basewgt:
             wgts = _build_weights(table, self._data_config, reweight_hists=result)
-            _logger.info('Sample weight percentiles: %s', str(np.percentile(wgts, np.arange(101))))
             wgt_ref = np.percentile(wgts, 100 - self._data_config.reweight_threshold)
             _logger.info('Set overall reweighting scale factor (%d threshold) to %s (max %s)' %
                          (100 - self._data_config.reweight_threshold, wgt_ref, np.max(wgts)))
@@ -292,9 +314,12 @@ class WeightMaker(object):
         table = self.read_file(self._filelist)
         wgts = self.make_weights(table)
         self._data_config.reweight_hists = wgts
-        # must also propagate the changes to `data_config.options` so it can be persisted
+        # must also propogate the changes to `data_config.options` so it can be persisted
         self._data_config.options['weights']['reweight_hists'] = {k: v.tolist() for k, v in wgts.items()}
         if output:
             _logger.info('Writing YAML file w/ reweighting info to %s' % output)
             self._data_config.dump(output)
         return self._data_config
+
+
+
