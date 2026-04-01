@@ -68,7 +68,7 @@ def _get_content_and_offsets(a):
         offsets = np.asarray(layout.offsets.data)
         inner = layout.content
         # get the raw numpy data from the NumpyArray content
-        content = np.asarray(inner.data)
+        content = np.asarray(inner.content.data)
         if content.ndim != 1:
             return None
         return content, offsets

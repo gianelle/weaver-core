@@ -309,7 +309,7 @@ class _SimpleIter(object):
         self._try_get_next(init=True)
 
     def __next__(self):
-        # print(self.ipos, self.cursor)
+        #print(self.ipos, self.cursor)
         if len(self.filelist) == 0:
             raise StopIteration
         try:
@@ -364,7 +364,7 @@ class _SimpleIter(object):
 
         filelist, load_ranges = self.load_filelist_and_ranges[self.ipos]
 
-        # _logger.info('Start fetching next batch, len(filelist)=%d, load_ranges=%s'%(len(filelist), load_ranges))
+        #_logger.info('Start fetching next batch, len(filelist)=%d, load_ranges=%s'%(len(filelist), load_ranges))
         if self._async_load:
             self.prefetch = self.executor.submit(
                 _load_next, self._data_config, filelist, load_ranges, self._sampler_options

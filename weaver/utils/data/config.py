@@ -173,7 +173,7 @@ class DataConfig(object):
         if print_info:
 
             def _log(msg, *args, **kwargs):
-                _logger.info(msg, *args, color="lightgray", **kwargs)
+                _logger.info(msg, *args, color="green", **kwargs)
 
             _log("preprocess config: %s", str(self.preprocess))
             _log("selection: %s", str(self.selection))
