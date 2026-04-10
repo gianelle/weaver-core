@@ -56,6 +56,8 @@ parser.add_argument('--train-val-split', type=float, default=0.8,
                     help='training/validation split fraction')
 parser.add_argument('--remake-weights', action='store_true', default=False,
                      help='remake weights for sampling (reweighting), use existing ones in the previous auto-generated data config YAML file')
+parser.add_argument('--demo', action=argparse.BooleanOptionalAction, default=False,
+                    help='quickly test the setup by running over only a small number of events')
 parser.add_argument('--lr-finder', type=str, default=None,
                     help='run learning rate finder instead of the actual training; format: ``start_lr, end_lr, num_iters``')
 parser.add_argument('--tensorboard', type=str, default=None,
@@ -256,6 +258,17 @@ def train_load(args):
 
     _logger.info('Using %d files for training, range: %s' % (len(train_files), str(train_range)))
     _logger.info('Using %d files for validation, range: %s' % (len(val_files), str(val_range)))
+
+    if args.demo:
+        train_files = train_files[:20]
+        val_files = val_files[:20]
+        train_file_dict = {"_": train_files}
+        val_file_dict = {"_": val_files}
+        _logger.info(train_files)
+        _logger.info(val_files)
+        args.data_fraction = 0.1
+        args.data_split_num = 1
+        args.fetch_step = 0.002
 
     if args.in_memory and (args.steps_per_epoch is None or args.steps_per_epoch_val is None):
         raise RuntimeError('Must set --steps-per-epoch when using --in-memory!')

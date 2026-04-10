@@ -634,7 +634,7 @@ class ParticleTransformer(nn.Module):
             x, v, mask, uu = self.trimmer(x, v, mask, uu)
             padding_mask = ~mask.squeeze(1)  # (N, P)
 
-        with torch.cuda.amp.autocast(enabled=self.use_amp):
+        with torch.amp.autocast('cuda', enabled=self.use_amp):
 
             # input embedding
             x = self.embed(x).masked_fill(~mask.permute(2, 0, 1), 0)  # (P, N, C)
@@ -960,7 +960,7 @@ class ParticleTransformerTaggerSV(nn.Module):
             v    = torch.cat([pf_ch_v, sv_v], dim=2)
             mask = torch.cat([pf_ch_mask, sv_mask], dim=2)
 
-        with torch.cuda.amp.autocast(enabled=self.use_amp):
+        with torch.amp.autocast('cuda', enabled=self.use_amp):
             pf_ch_x  = self.pf_ch_embed(pf_ch_x)  # after embed: (seq_len, batch, embed_dim)
             sv_x     = self.sv_embed(sv_x)
             x = torch.cat([pf_ch_x, sv_x], dim=0)

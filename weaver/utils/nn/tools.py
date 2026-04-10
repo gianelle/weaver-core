@@ -174,7 +174,6 @@ def evaluate_classification(model, test_loader, dev, epoch, for_training=True, l
                     scores.append(torch.softmax(model_output,dim=1).numpy(force=True).astype(dtype=np.float32))
                 else:
                     scores.append(torch.zeros(num_examples,num_labels).numpy(force=True).astype(dtype=np.float32));
-
                 if loss_func is None :                    
                     loss = 0
                 else:
@@ -207,7 +206,6 @@ def evaluate_classification(model, test_loader, dev, epoch, for_training=True, l
     time_diff = time.time() - start_time
     _logger.info('Processed %d entries in total (avg. speed %.1f entries/s)' % (count, count / time_diff))
     _logger.info('Evaluation - AvgLoss: %.5f AvgAcc: %.5f'%(total_loss / num_batches, total_correct / count if count else 0))
-    #_logger.info('Evaluation AvgAcc: %.5f'%(total_correct / count if count else 0))
     _logger.info('Evaluation class distribution: \n    %s', str(sorted(label_counter.items())))
 
     if tb_helper:
@@ -625,7 +623,7 @@ def train_classreg(model, loss_func, opt, scheduler, train_loader, dev, epoch, s
             num_examples = max(label.shape[0],target.shape[0]);
             ### loss minimization
             model.zero_grad(set_to_none=True)
-            with torch.cuda.amp.autocast(enabled=grad_scaler is not None):            
+            with torch.amp.autocast('cuda', enabled=grad_scaler is not None):            
                 label = label.squeeze();
                 target = target.squeeze();
                 ### evaluate the model
