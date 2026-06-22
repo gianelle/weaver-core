@@ -35,49 +35,25 @@ Weaver puts particular emphases on:
 The `Weaver` package requires Python 3.7+ and a number of packages like `numpy`, `scikit-learn`, `PyTorch`, etc.
 To run the neural network training, an Nvidia GPU with [CUDA](https://developer.nvidia.com/cuda-downloads) support is needed.
 
-To manage the Python environment, we recommend using [Miniconda](https://docs.conda.io/en/latest/miniconda.html).
-Below are the instructions to set up Miniconda and install the required packages. This needs to be done only once.
-
-### Install Miniconda (if you don't already have it)
+### Install it in a python environment
 
 ```bash
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-bash Miniconda3-latest-Linux-x86_64.sh
-# Follow the instructions to finish the installation
-
-# Make sure to choose `yes` for the following one to let the installer initialize Miniconda3
-# > Do you wish the installer to initialize Miniconda3
-# > by running conda init? [yes|no]
-
-# [Optional] Disable auto activation of the base environment
-conda config --set auto_activate_base false
-```
-
-Verify the installation is successful by running `conda info` and checking if the paths are pointing to your Miniconda installation.
-
-If you cannot run the `conda` command, check if the conda path has been correctly set up in your `.bashrc`/`.zshrc` file. You may need to log out and log in again for the changes to take effect.
-
-### Set up a conda environment and install the packages
-
-```bash
-# create a new conda environment
-conda create -n weaver python=3.10
+# create a pyenv environment
+python3.11 -m venv weaver
 
 # activate the environment
-conda activate weaver
+source weaver/bin/activate
 
 # install pytorch, follow instructions for your OS/CUDA version at:
 # https://pytorch.org/get-started
-# pip install torch
+pip install torch
+
+# install others useful dependencies
+pip install pyarrow fsspec seaborn mplhep tabulate ipython
 
 # install weaver, this will install also all the dependencies except for PyTorch
-pip install weaver-core
-```
-
-Alternatively, if you want to install `weaver-core` in editable/development mode:
-
-```
-git clone git@github.com:hqucms/weaver-core.git
+cd weaver
+git clone < weaver-core.git repository>
 cd weaver-core
 pip install -e .
 ```
@@ -183,7 +159,8 @@ Note:
 When you are satisfied with the trained model, you could export it from PyTorch to ONNX format for inference (e.g., using [ONNXRuntime](https://github.com/microsoft/onnxruntime)):
 
 ```bash
-weaver -c data/ak15_points_pf_sv.yaml -n networks/particle_net_pf_sv.py -m /path/to/models/prefix_best_epoch_state.pt --export-onnx model.onnx
+weaver -c data/ak15_points_pf_sv.yaml -n networks/particle_net_pf_sv.py \
+ -m /path/to/models/prefix_best_epoch_state.pt --export-onnx model.onnx
 ```
 
 ## More about data loading and processing
