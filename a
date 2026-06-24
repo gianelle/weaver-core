@@ -1,0 +1,879 @@
+Binary files weaver/__pycache__/__init__.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/__pycache__/__init__.cpython-311.pyc differ
+Binary files weaver/__pycache__/train.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/__pycache__/train.cpython-311.pyc differ
+Binary files weaver/nn/__pycache__/__init__.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/nn/__pycache__/__init__.cpython-311.pyc differ
+Binary files weaver/nn/loss/__pycache__/__init__.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/nn/loss/__pycache__/__init__.cpython-311.pyc differ
+Binary files weaver/nn/loss/__pycache__/focal.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/nn/loss/__pycache__/focal.cpython-311.pyc differ
+diff -Bur weaver/nn/model/ParticleTransformer.py /lhcbdata/venv/weaver_dev/weaver-core/weaver/nn/model/ParticleTransformer.py
+--- weaver/nn/model/ParticleTransformer.py	2026-06-22 11:11:02.991677539 +0200
++++ /lhcbdata/venv/weaver_dev/weaver-core/weaver/nn/model/ParticleTransformer.py	2026-04-09 10:10:06.547208899 +0200
+@@ -895,14 +895,14 @@
+         pair_extra_dim=0,
+         remove_self_pair=False,
+         use_pre_activation_pair=True,
+-        use_conv_embed=False,
++        use_conv_embed=None,
+         embed_dims=(128, 512, 128),
+         pair_embed_dims=(64, 64, 64),
+         num_heads=8,
+         num_layers=8,
+         block_params=None,
+         block_ids_with_attn_mask=None,
+-        include_global_token=False,
++        include_global_token=None,
+         num_cls_layers=2,
+         cls_block_params=None,
+         fc_params=(),
+@@ -960,22 +960,16 @@
+             default_cfg.update(
+                 use_rmsnorm=True,
+                 use_bias=False,
++                use_qk_norm=True,
++                elementwise_attn_output_gate=True,
+                 dropout=0,
+                 attn_dropout=0,
+                 activation_dropout=0,
+                 drop_path_rate=0.1,
+             )
+-            # TODO: still experimental
+-            if version == 3.5:
+-                default_cfg.update(
+-                    use_qk_norm=True,
+-                    elementwise_attn_output_gate=True,
+-                )
+-            if version == 3.6:
+-                default_cfg.update(
+-                    use_qk_norm=True,
+-                    elementwise_attn_output_gate=True,
+-                )
++            if use_conv_embed is None:
++                use_conv_embed = True
++            if include_global_token is None:
+                 include_global_token = True
+                 num_cls_layers = 0
+         norm_layer = nn.RMSNorm if default_cfg["use_rmsnorm"] else nn.LayerNorm
+Only in weaver/nn/model: ParticleTransformer.py.orig
+Binary files weaver/nn/model/__pycache__/ParticleNet.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/nn/model/__pycache__/ParticleNet.cpython-311.pyc differ
+Binary files weaver/nn/model/__pycache__/ParticleTransformer.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/nn/model/__pycache__/ParticleTransformer.cpython-311.pyc differ
+Only in weaver/nn/model/__pycache__: ParticleTransformerCharged.cpython-311.pyc
+Binary files weaver/nn/model/__pycache__/__init__.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/nn/model/__pycache__/__init__.cpython-311.pyc differ
+diff -Bur weaver/train.py /lhcbdata/venv/weaver_dev/weaver-core/weaver/train.py
+--- weaver/train.py	2026-06-22 11:30:48.921019253 +0200
++++ /lhcbdata/venv/weaver_dev/weaver-core/weaver/train.py	2026-05-25 11:04:29.017814219 +0200
+@@ -53,8 +53,6 @@
+                          ' (c) split output per N input files, `--data-test a%%10:/path/to/a/*`, will split per 10 input files')
+ parser.add_argument('--data-fraction', type=float, default=1,
+                     help='fraction of events to load from each file; for training, the events are randomly selected for each epoch')
+-parser.add_argument('--data-fraction-val', type=float, default=None,
+-                    help='--data-fraction for the validation data loader; defaults to --data-fraction if not set')
+ parser.add_argument('--file-fraction', type=float, default=1,
+                     help='fraction of files to load; for training, the files are randomly selected for each epoch')
+ parser.add_argument('--fetch-by-files', action=argparse.BooleanOptionalAction, default=False,
+@@ -314,7 +312,7 @@
+         batch_size=args.batch_size_val,
+         for_training=True,
+         extra_selection=args.extra_selection_val,
+-        load_range_and_fraction=(val_range, args.data_fraction_val if args.data_fraction_val is not None else args.data_fraction, args.data_split_val),
++        load_range_and_fraction=(val_range, args.data_fraction, args.data_split_val),
+         file_fraction=args.file_fraction,
+         fetch_by_files=args.fetch_by_files,
+         fetch_step=args.fetch_step_val,
+@@ -830,9 +828,7 @@
+     monitor_info = defaultdict(list)
+ 
+     for X, y, Z in tqdm(data_loader):
+-        for k, v in X.items():
+-            monitor_info[k].append(v)
+-        for k, v in y.items():
++        for k, v in Z.items():
+             monitor_info[k].append(v)
+     monitor_info = {k: _concat(v) for k, v in monitor_info.items()}
+     if monitor_info:
+Only in weaver: train.py.orig
+Binary files weaver/utils/__pycache__/__init__.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/__pycache__/__init__.cpython-311.pyc differ
+Binary files weaver/utils/__pycache__/dataset.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/__pycache__/dataset.cpython-311.pyc differ
+Binary files weaver/utils/__pycache__/flops_counter.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/__pycache__/flops_counter.cpython-311.pyc differ
+Binary files weaver/utils/__pycache__/import_tools.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/__pycache__/import_tools.cpython-311.pyc differ
+Binary files weaver/utils/__pycache__/logger.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/__pycache__/logger.cpython-311.pyc differ
+Only in weaver/utils: convert_to_parquet.py
+Binary files weaver/utils/data/__pycache__/__init__.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/__pycache__/__init__.cpython-311.pyc differ
+Binary files weaver/utils/data/__pycache__/config.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/__pycache__/config.cpython-311.pyc differ
+Binary files weaver/utils/data/__pycache__/eval_utils.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/__pycache__/eval_utils.cpython-311.pyc differ
+Binary files weaver/utils/data/__pycache__/fileio.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/__pycache__/fileio.cpython-311.pyc differ
+Binary files weaver/utils/data/__pycache__/preprocess.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/__pycache__/preprocess.cpython-311.pyc differ
+Only in /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/__pycache__: tools._pad_jagged_kernel-31.py311.1.nbc
+Only in /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/__pycache__: tools._pad_jagged_kernel-31.py311.2.nbc
+Only in /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/__pycache__: tools._pad_jagged_kernel-31.py311.nbi
+Only in /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/__pycache__: tools._repeat_pad_jagged_kernel-45.py311.1.nbc
+Only in /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/__pycache__: tools._repeat_pad_jagged_kernel-45.py311.2.nbc
+Only in /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/__pycache__: tools._repeat_pad_jagged_kernel-45.py311.nbi
+Binary files weaver/utils/data/__pycache__/tools.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/__pycache__/tools.cpython-311.pyc differ
+diff -Bur weaver/utils/data/config.py /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/config.py
+--- weaver/utils/data/config.py	2026-06-22 11:32:13.219465259 +0200
++++ /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/config.py	2026-04-09 10:10:06.555208933 +0200
+@@ -3,7 +3,7 @@
+ import copy
+ 
+ from ..logger import _logger
+-from .eval_utils import _get_data_var_names
++from .eval_utils import _get_variable_names
+ 
+ 
+ def _as_list(x):
+@@ -207,10 +207,10 @@
+ 
+         # selection
+         if self.selection:
+-            self.register(_get_data_var_names(self.selection), to="train")
++            self.register(_get_variable_names(self.selection), to="train")
+         # test time selection
+         if self.test_time_selection:
+-            self.register(_get_data_var_names(self.test_time_selection), to="test")
++            self.register(_get_variable_names(self.test_time_selection), to="test")
+         # inputs
+         for names in self.input_dicts.values():
+             self.register(names)
+@@ -228,7 +228,7 @@
+                 for k in load_branches & func_vars:
+                     aux_branches.add(k)
+                     load_branches.remove(k)
+-                    load_branches.update(_get_data_var_names(self.var_funcs[k]))
++                    load_branches.update(_get_variable_names(self.var_funcs[k]))
+         if print_info:
+             _logger.debug("train_load_branches:\n  %s", ", ".join(sorted(self.train_load_branches)))
+             _logger.debug("train_aux_branches:\n  %s", ", ".join(sorted(self.train_aux_branches)))
+@@ -240,10 +240,7 @@
+         self.test_var_funcs = {k: v for k, v in self.var_funcs.items() if k in self.test_aux_branches}
+ 
+     def __getattr__(self, name):
+-        try:
+-            return self.options[name]
+-        except KeyError:
+-            raise AttributeError(name)
++        return self.options[name]
+ 
+     def register(self, name, expr=None, to="both"):
+         assert to in ("train", "test", "both")
+Only in weaver/utils/data: config.py.orig
+diff -Bur weaver/utils/data/eval_utils.py /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/eval_utils.py
+--- weaver/utils/data/eval_utils.py	2026-06-22 11:33:33.065887714 +0200
++++ /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/eval_utils.py	2026-04-09 10:10:06.556208937 +0200
+@@ -24,12 +24,6 @@
+         - set(exclude)
+     )
+ 
+-def _get_data_var_names(expr):
+-    # Names referenced in `expr` that should be looked up in the data table.
+-    # Excludes registered functions (np, ak, user helpers from --custom-functions, etc.),
+-    # which are resolved from `_eval_funcs` at eval time instead.
+-    return [v for v in _get_variable_names(expr) if v not in _eval_funcs]
+-
+ 
+ @functools.lru_cache(maxsize=None)
+ def _compile_expr(expr):
+@@ -37,7 +31,7 @@
+ 
+ 
+ def _eval_expr(expr, table):
+-    tmp = {**_eval_funcs, **{k: table[k] for k in _get_data_var_names(expr)}}
++    tmp = {**_eval_funcs, **{k: table[k] for k in _get_variable_names(expr)}}
+     return eval(_compile_expr(expr), tmp)
+ 
+ 
+Only in weaver/utils/data: eval_utils.py.orig
+diff -Bur weaver/utils/data/fileio.py /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/fileio.py
+--- weaver/utils/data/fileio.py	2026-06-22 14:47:12.007252373 +0200
++++ /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/fileio.py	2026-04-09 10:10:06.558208946 +0200
+@@ -1,5 +1,4 @@
+ import math
+-import os
+ import awkward as ak
+ import tqdm
+ import traceback
+@@ -27,9 +26,7 @@
+ 
+     with uproot.open(filepath) as f:
+         if treename is None:
+-            treenames = set(
+-                [k.split(";")[0] for k, v in f.items() if getattr(v, "classname", "") == "TTree"]
+-            )
++            treenames = set([k.split(";")[0] for k, v in f.items() if getattr(v, "classname", "") == "TTree"])
+             if len(treenames) == 1:
+                 treename = treenames.pop()
+             else:
+@@ -51,11 +48,7 @@
+                     if src in decoded_name:
+                         decoded_name = decoded_name.replace(src, tgt)
+                 branch_dict[name] = decoded_name
+-            outputs = tree.arrays(
+-                filter_name=list(branch_dict.values()),
+-                entry_start=start,
+-                entry_stop=stop,
+-            )
++            outputs = tree.arrays(filter_name=list(branch_dict.values()), entry_start=start, entry_stop=stop)
+             for name, decoded_name in branch_dict.items():
+                 if name != decoded_name:
+                     outputs[name] = outputs[decoded_name]
+@@ -79,62 +72,21 @@
+ 
+ 
+ def _read_parquet(filepath, branches, load_range=None):
+-    import pyarrow.parquet as pq
+-
+-    pf = pq.ParquetFile(filepath)
+-    meta = pf.metadata
+-    n_rg = meta.num_row_groups
+-    print(meta)
+-    if load_range is not None and n_rg > 1:
+-        total = meta.num_rows
+-        start_row = math.trunc(load_range[0] * total)
+-        stop_row = max(start_row + 1, math.trunc(load_range[1] * total))
+-        # find which row groups overlap [start_row, stop_row)
+-        rg_indices = []
+-        row_offset = 0
+-        print(n_rg)
+-        for i in range(n_rg):
+-            rg_rows = meta.row_group(i).num_rows
+-            rg_end = row_offset + rg_rows
+-            if rg_end > start_row and row_offset < stop_row:
+-                rg_indices.append(i)
+-            row_offset = rg_end
+-        print(rg_indices)
+-        tbl = pf.read_row_groups(rg_indices, columns=branches)
+-        print(tbl)
+-        outputs = ak.from_arrow(tbl)
+-        # trim to exact range within the selected row groups
+-        rg0_start = sum(meta.row_group(i).num_rows for i in range(rg_indices[0]))
+-        print(local_start, local_stop)
+-        local_start = start_row - rg0_start
+-        local_stop = local_start + (stop_row - start_row)
+-        if local_start > 0 or local_stop < len(outputs):
+-            outputs = outputs[local_start:local_stop]
+-    else:
+-        print(branches)
+-        tbl = pf.read(columns=branches)
+-        print("tbl: ", tbl)
+-        outputs = ak.from_arrow(tbl)
+-        print("Outputs: ", outputs)
+-        if load_range is not None:
+-            start = math.trunc(load_range[0] * len(outputs))
+-            stop = max(start + 1, math.trunc(load_range[1] * len(outputs)))
+-            outputs = outputs[start:stop]
+-    print("Returns: ", outputs) 
++    outputs = ak.from_parquet(filepath, columns=branches)
++    if load_range is not None:
++        start = math.trunc(load_range[0] * len(outputs))
++        stop = max(start + 1, math.trunc(load_range[1] * len(outputs)))
++        outputs = outputs[start:stop]
+     return outputs
+ 
+ 
+-def _read_files(
+-    filelist,
+-    branches,
+-    load_ranges=None,
+-    show_progressbar=False,
+-    file_magic=None,
+-    **kwargs,
+-):
++def _read_files(filelist, branches, load_ranges=None, show_progressbar=False, file_magic=None, **kwargs):
++    import os
++
+     branches = list(branches)
+     table = []
+-    iterable = tqdm.tqdm(filelist) if show_progressbar else filelist
++    if show_progressbar:
++        filelist = tqdm.tqdm(filelist)
+ 
+     # check `load_ranges`:
+     #  - None: load all entries for all files
+@@ -148,8 +100,7 @@
+         else:
+             load_ranges = (load_ranges,) * len(filelist)
+     assert all(r is None or (len(r) == 2 and 0 <= r[0] < r[1] <= 1) for r in load_ranges)
+-    print(load_ranges)
+-    for filepath, load_range in zip(iterable, load_ranges):
++    for filepath, load_range in zip(filelist, load_ranges):
+         if load_range is not None and load_range[0] >= load_range[1]:
+             continue
+         ext = os.path.splitext(filepath)[1]
+@@ -169,35 +120,30 @@
+             elif ext == ".awkd":
+                 a = _read_awkd(filepath, branches, load_range=load_range)
+             elif ext == ".parquet":
+-                print("read parquet")
+                 a = _read_parquet(filepath, branches, load_range=load_range)
+         except Exception as e:
+             a = None
+             _logger.error("When reading file %s:", filepath)
+             _logger.error(traceback.format_exc())
+-        if a is not None and file_magic is not None:
+-            import re
+-            print(a.fields)
+-            for var, value_dict in file_magic.items():
+-                if var in a.fields:
+-                    warn_n_times(
+-                        f"Var `{var}` already defined in the arrays "
+-                        f"but will be OVERWRITTEN by file_magic {value_dict}."
+-                    )
+-                a[var] = 0
+-                for fn_pattern, value in value_dict.items():
+-                    if re.search(fn_pattern, filepath):
+-                        a[var] = value
+-                        break
+         if a is not None:
++            if file_magic is not None:
++                import re
++
++                for var, value_dict in file_magic.items():
++                    if var in a.fields:
++                        warn_n_times(
++                            f"Var `{var}` already defined in the arrays "
++                            f"but will be OVERWRITTEN by file_magic {value_dict}."
++                        )
++                    a[var] = 0
++                    for fn_pattern, value in value_dict.items():
++                        if re.search(fn_pattern, filepath):
++                            a[var] = value
++                            break
+             table.append(a)
+-    print(table)
+     table = _concat(table)  # ak.Array
+-
+     if len(table) == 0:
+-        raise RuntimeError(
+-            f"Zero entries loaded when reading files {filelist} with `load_ranges`={load_ranges}."
+-        )
++        raise RuntimeError(f"Zero entries loaded when reading files {filelist} with `load_ranges`={load_ranges}.")
+     return table
+ 
+ 
+Only in weaver/utils/data: fileio.py.orig
+diff -Bur weaver/utils/data/preprocess.py /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/preprocess.py
+--- weaver/utils/data/preprocess.py	2026-06-22 11:36:46.581914763 +0200
++++ /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/preprocess.py	2026-04-09 10:10:06.559208950 +0200
+@@ -5,7 +5,7 @@
+ import awkward as ak
+ 
+ from ..logger import _logger, warn_n_times
+-from .eval_utils import _get_data_var_names, _eval_expr
++from .eval_utils import _get_variable_names, _eval_expr
+ from .fileio import _read_files
+ from .config import _strcat
+ 
+@@ -14,7 +14,7 @@
+     if selection is None:
+         return table
+     if funcs:
+-        new_vars = {k: funcs[k] for k in _get_data_var_names(selection) if k not in table.fields and k in funcs}
++        new_vars = {k: funcs[k] for k in _get_variable_names(selection) if k not in table.fields and k in funcs}
+         _build_new_variables(table, new_vars)
+     selected = ak.values_astype(_eval_expr(selection, table), "bool")
+     return table[selected]
+@@ -99,14 +99,14 @@
+                 keep_branches.add(k)
+                 load_branches.add(k)
+         if self._data_config.selection:
+-            load_branches.update(_get_data_var_names(self._data_config.selection))
++            load_branches.update(_get_variable_names(self._data_config.selection))
+ 
+         func_vars = set(self._data_config.var_funcs.keys())
+         while load_branches & func_vars:
+             for k in load_branches & func_vars:
+                 aux_branches.add(k)
+                 load_branches.remove(k)
+-                load_branches.update(_get_data_var_names(self._data_config.var_funcs[k]))
++                load_branches.update(_get_variable_names(self._data_config.var_funcs[k]))
+ 
+         _logger.debug("[AutoStandardizer] keep_branches:\n  %s", ",".join(keep_branches))
+         _logger.debug("[AutoStandardizer] aux_branches:\n  %s", ",".join(aux_branches))
+@@ -185,14 +185,14 @@
+         aux_branches = set()
+         load_branches = keep_branches.copy()
+         if self._data_config.selection:
+-            load_branches.update(_get_data_var_names(self._data_config.selection))
++            load_branches.update(_get_variable_names(self._data_config.selection))
+ 
+         func_vars = set(self._data_config.var_funcs.keys())
+         while load_branches & func_vars:
+             for k in load_branches & func_vars:
+                 aux_branches.add(k)
+                 load_branches.remove(k)
+-                load_branches.update(_get_data_var_names(self._data_config.var_funcs[k]))
++                load_branches.update(_get_variable_names(self._data_config.var_funcs[k]))
+ 
+         _logger.debug("[WeightMaker] keep_branches:\n  %s", ",".join(keep_branches))
+         _logger.debug("[WeightMaker] aux_branches:\n  %s", ",".join(aux_branches))
+Only in weaver/utils/data: preprocess.py.orig
+diff -Bur weaver/utils/data/tools.py /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/tools.py
+--- weaver/utils/data/tools.py	2026-06-23 12:10:27.125567596 +0200
++++ /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/data/tools.py	2026-04-09 10:10:06.561208959 +0200
+@@ -59,15 +59,8 @@
+     """Extract flat content and offsets from a 1-level jagged awkward array. Returns None if not applicable."""
+     try:
+         layout = a.layout
+-        # IndexedArray reorders/filters its content (e.g., after `table[selected]`),
+-        # so naively unwrapping it would yield the underlying array's offsets and silently
+-        # drop the index. Materialize via ak.to_packed to get a true ListOffsetArray.
+-        if isinstance(layout, (ak.contents.IndexedArray, ak.contents.IndexedOptionArray)):
+-            layout = ak.to_packed(a).layout
+-        # unwrap remaining wrappers that don't have offsets (e.g. VirtualArray)
++        # unwrap wrappers that don't have offsets (e.g. VirtualArray, IndexedArray)
+         while not hasattr(layout, "offsets"):
+-            if isinstance(layout, (ak.contents.IndexedArray, ak.contents.IndexedOptionArray)):
+-                return None
+             if hasattr(layout, "content"):
+                 layout = layout.content
+             else:
+@@ -75,7 +68,7 @@
+         offsets = np.asarray(layout.offsets.data)
+         inner = layout.content
+         # get the raw numpy data from the NumpyArray content
+-        content = np.asarray(inner.data)
++        content = np.asarray(inner.content.data)
+         if content.ndim != 1:
+             return None
+         return content, offsets
+@@ -112,28 +105,10 @@
+     assert isinstance(a, ak.Array)
+     if a.ndim == 1:
+         a = ak.unflatten(a, 1)
+-    result = _get_content_and_offsets(a)
+-    print("PAD ", result)
+-    if result is not None:
+-        content, offsets = result
+-        nrows = len(offsets) - 1
+-        out = np.zeros((nrows, maxlen), dtype=dtype)
+-        _repeat_pad_jagged_kernel(content.astype(dtype), offsets, out)
+-        print("PAD out ", out)
+-        return out
+-    # fallback for complex layouts
+-    counts = np.asarray(ak.num(a))
+-    nrows = len(counts)
+-    out = np.zeros((nrows, maxlen), dtype=dtype)
+-    idx = np.arange(maxlen)
+-    print("PAD None ", counts, nrows, out, idx)
+-    for i in range(nrows):
+-        n = int(counts[i])
+-        if n == 0:
+-            continue
+-        row = np.asarray(a[i], dtype=dtype)
+-        out[i] = row[idx % n]
+-    print("PAD return ", out)
++    content, offsets = _get_content_and_offsets(a)
++    nrows = len(offsets) - 1
++    out = np.empty((nrows, maxlen), dtype=dtype)
++    _repeat_pad_jagged_kernel(content.astype(dtype), offsets, out)
+     return out
+ 
+ 
+@@ -189,141 +164,6 @@
+     return indices
+ 
+ 
+-@numba.njit(cache=True)
+-def _batched_fused_repeat_pad(all_content, content_starts, offsets, centers, scales, los, his, do_centers, out):
+-    """Batched: standardize + clip + repeat-pad + nan_to_num for all variables in one kernel call."""
+-    nrows = out.shape[0]
+-    n_vars = out.shape[1]
+-    maxlen = out.shape[2]
+-    for i in range(nrows):
+-        row_start = offsets[i]
+-        row_len = offsets[i + 1] - row_start
+-        if row_len == 0:
+-            continue
+-        for vi in range(n_vars):
+-            base = content_starts[vi]
+-            center = centers[vi]
+-            scale_v = scales[vi]
+-            lo_v = los[vi]
+-            hi_v = his[vi]
+-            dc = do_centers[vi]
+-            idx = 0
+-            for j in range(maxlen):
+-                val = all_content[base + row_start + idx]
+-                idx += 1
+-                if idx >= row_len:
+-                    idx = 0
+-                if dc:
+-                    val = (val - center) * scale_v
+-                    if val < lo_v:
+-                        val = lo_v
+-                    elif val > hi_v:
+-                        val = hi_v
+-                if val != val:
+-                    val = np.float32(0.0)
+-                out[i, vi, j] = val
+-
+-
+-@numba.njit(cache=True)
+-def _batched_fused_constant_pad(all_content, content_starts, offsets, centers, scales, los, his, do_centers,
+-                                pad_values, out):
+-    """Batched: standardize + clip + constant-pad + nan_to_num for all variables in one kernel call."""
+-    nrows = out.shape[0]
+-    n_vars = out.shape[1]
+-    maxlen = out.shape[2]
+-    for i in range(nrows):
+-        row_start = offsets[i]
+-        row_len = offsets[i + 1] - row_start
+-        n = min(row_len, maxlen)
+-        for vi in range(n_vars):
+-            base = content_starts[vi]
+-            center = centers[vi]
+-            scale_v = scales[vi]
+-            lo_v = los[vi]
+-            hi_v = his[vi]
+-            dc = do_centers[vi]
+-            pv = pad_values[vi]
+-            for j in range(n, maxlen):
+-                out[i, vi, j] = pv
+-            for j in range(n):
+-                val = all_content[base + row_start + j]
+-                if dc:
+-                    val = (val - center) * scale_v
+-                    if val < lo_v:
+-                        val = lo_v
+-                    elif val > hi_v:
+-                        val = hi_v
+-                if val != val:
+-                    val = np.float32(0.0)
+-                out[i, vi, j] = val
+-
+-
+-def _fused_pad_and_stack(table, var_names, preprocess_params, dtype="float32"):
+-    """Fused standardize + clip + pad + nan_to_num + stack for variables sharing the same jagged structure."""
+-    if not var_names:
+-        return None
+-
+-    first_result = _get_content_and_offsets(table[var_names[0]])
+-    if first_result is None:
+-        return None
+-    _, shared_offsets = first_result
+-
+-    nrows = len(shared_offsets) - 1
+-    n_vars = len(var_names)
+-    padlen = preprocess_params[var_names[0]]["length"]
+-    if padlen is None:
+-        return None
+-
+-    pad_mode = preprocess_params[var_names[0]]["pad_mode"]
+-
+-    content_arrays = []
+-    param_centers = np.zeros(n_vars, dtype=np.float32)
+-    param_scales = np.zeros(n_vars, dtype=np.float32)
+-    param_los = np.zeros(n_vars, dtype=np.float32)
+-    param_his = np.zeros(n_vars, dtype=np.float32)
+-    param_do_centers = np.zeros(n_vars, dtype=np.bool_)
+-    param_pad_values = np.zeros(n_vars, dtype=np.float32)
+-
+-    for vi, vn in enumerate(var_names):
+-        result = _get_content_and_offsets(table[vn])
+-        if result is None or len(result[1]) != len(shared_offsets):
+-            return None
+-        content, offsets = result
+-        if not np.array_equal(offsets, shared_offsets):
+-            return None
+-
+-        p = preprocess_params[vn]
+-        dc = p["center"] is not None
+-        param_do_centers[vi] = dc
+-        param_centers[vi] = np.float32(p["center"]) if dc else np.float32(0.0)
+-        param_scales[vi] = np.float32(p["scale"])
+-        param_los[vi] = np.float32(p["min"])
+-        param_his[vi] = np.float32(p["max"])
+-        param_pad_values[vi] = np.float32(p.get("pad_value", 0))
+-        content_f32 = content.astype(np.float32) if content.dtype != np.float32 else content
+-        content_arrays.append(content_f32)
+-
+-    content_len = int(shared_offsets[-1])
+-    all_content = np.zeros(n_vars * content_len, dtype=np.float32)
+-    content_starts = np.zeros(n_vars, dtype=np.int64)
+-    for vi in range(n_vars):
+-        start = vi * content_len
+-        content_starts[vi] = start
+-        all_content[start:start + content_len] = content_arrays[vi]
+-
+-    out = np.zeros((nrows, n_vars, padlen), dtype=dtype)
+-
+-    if pad_mode == "wrap":
+-        _batched_fused_repeat_pad(all_content, content_starts, shared_offsets,
+-                                  param_centers, param_scales, param_los, param_his,
+-                                  param_do_centers, out)
+-    else:
+-        _batched_fused_constant_pad(all_content, content_starts, shared_offsets,
+-                                    param_centers, param_scales, param_los, param_his,
+-                                    param_do_centers, param_pad_values, out)
+-    return out
+-
+-
+ def _p4_from_pxpypze(px, py, pz, energy):
+     import vector
+ 
+Only in weaver/utils/data: tools.py.orig
+diff -Bur weaver/utils/dataset.py /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/dataset.py
+--- weaver/utils/dataset.py	2026-06-22 16:03:06.005091986 +0200
++++ /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/dataset.py	2026-05-25 11:05:15.959060553 +0200
+@@ -9,7 +9,7 @@
+ from functools import partial
+ from concurrent.futures.thread import ThreadPoolExecutor
+ from .logger import _logger
+-from .data.tools import _pad, _repeat_pad, _clip, _stack, _fused_pad_and_stack, _get_content_and_offsets
++from .data.tools import _pad, _repeat_pad, _clip, _stack
+ from .data.fileio import _read_files
+ from .data.config import DataConfig, _md5
+ from .data.preprocess import _apply_selection, _build_new_variables, _build_weights, AutoStandardizer, WeightMaker
+@@ -24,69 +24,37 @@
+ 
+ def _finalize_inputs(table, data_config):
+     output = {}
+-    print(data_config)
+     # copy observer variables before transformation
+     for k in data_config.z_variables:
+         if k in data_config.observer_names:
+-            arr = table[k]
+-            output[k] = ak.to_numpy(arr) if isinstance(arr, ak.Array) and arr.ndim == 1 else arr
++            output[k] = table[k]  # ak.Array
+     # copy labels
+     for k in data_config.label_names:
+         output[k] = ak.to_numpy(table[k])
+-
+-    # validate auto-standardization upfront
+-    if data_config._auto_standardization:
+-        for k, params in data_config.preprocess_params.items():
+-            if params["center"] == "auto":
+-                raise ValueError("No valid standardization params for %s" % k)
+-    print("qua")
+-    # try fused path for each input group (standardize + pad + nan_to_num + stack in one kernel)
+-    fused_vars = set()
+-    for group_name, var_names in data_config.input_dicts.items():
+-        if data_config.preprocess_params[var_names[0]]["length"] is None:
+-            continue
+-        result = _fused_pad_and_stack(table, var_names, data_config.preprocess_params)
+-        if result is not None:
+-            output["_" + group_name] = result
+-            fused_vars.update(var_names)
+-            # NaN warnings on raw content (cheap scan)
+-            for vn in var_names:
+-                if vn not in _nan_warned_vars:
+-                    co = _get_content_and_offsets(table[vn])
+-                    if co is not None and np.any(np.isnan(co[0])):
+-                        _logger.warning("Variable '%s' contains NaN values (this warning is shown only once)", vn)
+-                        _nan_warned_vars.add(vn)
+-    print(output)  
+-    # fallback: per-variable transformation for vars not handled by fused path
++    # transformation
+     for k, params in data_config.preprocess_params.items():
+-        print(k, params)
+-        if k in fused_vars:
+-            continue
++        if data_config._auto_standardization and params["center"] == "auto":
++            raise ValueError("No valid standardization params for %s" % k)
+         if params["center"] is not None:
+             table[k] = _clip((table[k] - params["center"]) * params["scale"], params["min"], params["max"])
+-        print(table[k])  
+         if params["length"] is not None:
+-            print("lenght: ", params["length"])
+             pad_fn = _repeat_pad if params["pad_mode"] == "wrap" else partial(_pad, value=params["pad_value"])
+-            print(params["pad_mode"])
+             table[k] = pad_fn(table[k], params["length"])
+-        print(table[k])  
++        # log variables that contain NaN (once per variable)
+         if k not in _nan_warned_vars:
+             _has_nan = np.any(np.isnan(table[k]))
+             if _has_nan:
+                 _logger.warning("Variable '%s' contains NaN values (this warning is shown only once)", k)
+                 _nan_warned_vars.add(k)
+         table[k] = np.nan_to_num(table[k])
+-        print(table[k])  
+-    print(table)  
++
++    # stack variables for each input group
+     def _to_f32(x):
+         if isinstance(x, np.ndarray):
+             return x if x.dtype == np.float32 else x.astype("float32")
+         return np.asarray(ak.to_numpy(ak.values_astype(x, "float32")), dtype="float32")
+ 
+     for k, names in data_config.input_dicts.items():
+-        if "_" + k in output:
+-            continue
+         if len(names) == 1 and data_config.preprocess_params[names[0]]["length"] is None:
+             output["_" + k] = _to_f32(table[names[0]])
+         else:
+@@ -97,12 +65,9 @@
+                 result[:, idx] = _to_f32(table[n])
+             output["_" + k] = result
+     # copy monitor variables (after transformation)
+-    print(output)  
+     for k in data_config.z_variables:
+         if k in data_config.monitor_variables:
+-            arr = table[k]
+-            output[k] = ak.to_numpy(arr) if isinstance(arr, ak.Array) and arr.ndim == 1 else arr
+-    print("return: ",  output)  
++            output[k] = table[k]  # ak.Array
+     return output
+ 
+ 
+@@ -133,7 +98,6 @@
+ 
+ 
+ def _preprocess(table, data_config, options):
+-    print(options)
+     # add training flag (=True only for train loader, =False for val/test)
+     table["aux_training_"] = options["mode"] == "train"
+     # apply selection
+@@ -142,7 +106,6 @@
+         data_config.selection if options["training"] else data_config.test_time_selection,
+         funcs=data_config.var_funcs,
+     )
+-    print("Selection: ", table) 
+     if len(table) == 0:
+         return []
+     # define new variables
+@@ -164,7 +127,6 @@
+         indices = np.arange(len(table[data_config.label_names[0]]))
+     # shuffle
+     if options["shuffle"]:
+-        print("Shuffle")
+         # sequence bucketing
+         if data_config.bucketing:
+             rng = np.random.default_rng()
+@@ -187,17 +149,13 @@
+             indices = np.concatenate([bucket_indices, *remainder_indices])
+         else:
+             np.random.shuffle(indices)
+-    print("Selected: ", table) 
+     # perform input variable standardization, clipping, padding and stacking
+     table = _finalize_inputs(table, data_config)
+-    print("Returned: ", table) 
+-    print("indices: ", indices) 
+     return table, indices
+ 
+ 
+ def _load_next(data_config, filelist, load_ranges, options):
+     load_branches = data_config.train_load_branches if options["training"] else data_config.test_load_branches
+-    print(load_branches)  
+     table = _read_files(
+         filelist,
+         load_branches,
+@@ -206,31 +164,10 @@
+         branch_magic=data_config.branch_magic,
+         file_magic=data_config.file_magic,
+     )
+-    print("read: ", table)
+     table, indices = _preprocess(table, data_config, options)
+-    print(table, indices)
+     return table, indices
+ 
+ 
+-def _split_load_range(load_range, fetch_step):
+-    """Split a fractional load range without producing roundoff-sized chunks."""
+-    start_pos, end_pos = load_range
+-    if fetch_step <= 0:
+-        return [(start_pos, end_pos)]
+-
+-    tolerance = 8 * math.ulp(max(abs(start_pos), abs(end_pos), abs(fetch_step), 1.0))
+-    ranges = []
+-    while end_pos - start_pos > tolerance:
+-        remaining = end_pos - start_pos
+-        if remaining <= fetch_step + tolerance:
+-            next_pos = end_pos
+-        else:
+-            next_pos = start_pos + fetch_step
+-        ranges.append((start_pos, next_pos))
+-        start_pos = next_pos
+-    return ranges
+-
+-
+ class _SimpleIter(object):
+     r"""_SimpleIter
+ 
+@@ -299,11 +236,8 @@
+             if self.split_num > 1:
+                 _logger.warning("`split_num` is fixed to 1 when fetching by files.")
+             self.load_filelist_and_ranges = [
+-                (files, [self.load_range] * len(files))
+-                for files in (
+-                    self.filelist[i : i + self._fetch_step]
+-                    for i in range(0, len(self.filelist), self._fetch_step)
+-                )
++                (self.filelist[i : i + self._fetch_step], [self.load_range] * self._fetch_step)
++                for i in range(0, len(self.filelist), self._fetch_step)
+             ]
+         else:
+             self.load_filelist_and_ranges = []
+@@ -314,8 +248,11 @@
+                 # [[0, 0, 0, 0, 0], [1, 2/3, 0, 0, 0], [1, 1, 1, 1/3, 0], [1, 1, 1, 1, 1]]
+                 return np.array([[np.clip(n * di / d - ni, 0, 1) for ni in range(n)] for di in range(d + 1)])
+ 
+-            for start_pos, end_pos in _split_load_range(self.load_range, self._fetch_step):
+-                delta = end_pos - start_pos
++            for i_load in range(math.ceil((self.load_range[1] - self.load_range[0]) / self._fetch_step)):
++                # current iteration: load files from start_pos to start_pos + delta
++                start_pos = self.load_range[0] + i_load * self._fetch_step
++                delta = min(self._fetch_step, self.load_range[1] - start_pos)
++
+                 _load_filelist_and_ranges = [([], []) for _ in range(self.split_num)]
+                 for _, files in self.file_dict.items():
+                     n_files = len(files)
+@@ -350,7 +287,7 @@
+             self._file_fraction,
+             int(len(sum(self._init_file_dict.values(), [])) * self._file_fraction),
+             str(self.load_range),
+-            "\n".join(self.filelist[:3]) + ("\n ... " + self.filelist[-1] if self.filelist else ""),
++            "\n".join(self.filelist[:3]) + "\n ... " + self.filelist[-1],
+         )
+ 
+         debug_text = "Load filelist and ranges in each iteration:\n"
+@@ -414,7 +351,7 @@
+         if end_of_list:
+             if init:
+                 raise RuntimeError(
+-                    "Nothing to load for worker %d" % (0 if self.worker_info is None else self.worker_info.id)
++                    "Nothing to load for worker %d" % 0 if self.worker_info is None else self.worker_info.id
+                 )
+             if self._infinity_mode and not self._in_memory:
+                 # infinity mode: re-start
+@@ -427,9 +364,8 @@
+ 
+         filelist, load_ranges = self.load_filelist_and_ranges[self.ipos]
+ 
+-        _logger.info('Start fetching next batch, len(filelist)=%d, load_ranges=%s'%(len(filelist), load_ranges))
++        #_logger.info('Start fetching next batch, len(filelist)=%d, load_ranges=%s'%(len(filelist), load_ranges))
+         if self._async_load:
+-            print(self._sampler_options)
+             self.prefetch = self.executor.submit(
+                 _load_next, self._data_config, filelist, load_ranges, self._sampler_options
+             )
+Only in weaver/utils: dataset.py.orig
+Binary files weaver/utils/nn/__pycache__/__init__.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/nn/__pycache__/__init__.cpython-311.pyc differ
+Binary files weaver/utils/nn/__pycache__/metrics.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/nn/__pycache__/metrics.cpython-311.pyc differ
+Binary files weaver/utils/nn/__pycache__/tools.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/nn/__pycache__/tools.cpython-311.pyc differ
+Only in weaver/utils/nn/__pycache__: utils.cpython-311.pyc
+Binary files weaver/utils/nn/optimizer/__pycache__/__init__.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/nn/optimizer/__pycache__/__init__.cpython-311.pyc differ
+Binary files weaver/utils/nn/optimizer/__pycache__/lookahead.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/nn/optimizer/__pycache__/lookahead.cpython-311.pyc differ
+Binary files weaver/utils/nn/optimizer/__pycache__/radam.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/nn/optimizer/__pycache__/radam.cpython-311.pyc differ
+Binary files weaver/utils/nn/optimizer/__pycache__/ranger.cpython-311.pyc and /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/nn/optimizer/__pycache__/ranger.cpython-311.pyc differ
+diff -Bur weaver/utils/nn/tools.py /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/nn/tools.py
+--- weaver/utils/nn/tools.py	2026-06-22 10:55:13.411280994 +0200
++++ /lhcbdata/venv/weaver_dev/weaver-core/weaver/utils/nn/tools.py	2026-04-09 10:10:06.577209027 +0200
+@@ -32,11 +32,11 @@
+         # `label` and `mask` are provided as function arguments
+         preds = model_output
+     else:
+-        if len(model_output) == 2:
++        if len(model_output == 2):
+             # use `mask` from model_output instead
+             # `label` still provided as function argument
+             preds, mask = model_output
+-        elif len(model_output) == 3:
++        elif len(model_output == 3):
+             # use `label` and `mask` from model output
+             preds, label, mask = model_output
+ 
+@@ -300,7 +300,6 @@
+ 
+     time_diff = time.time() - start_time
+     _logger.info('Processed %d entries in total (avg. speed %.1f entries/s)' % (entry_count, entry_count / time_diff))
+-    _logger.info('Eval AvgLoss: %.5f, AvgAcc: %.5f' % (total_loss / count, total_correct / count))
+     _logger.info('Evaluation class distribution: \n    %s', str(sorted(label_counter.items())))
+ 
+     if tb_helper:

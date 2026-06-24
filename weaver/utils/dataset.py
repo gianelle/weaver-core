@@ -21,7 +21,6 @@ def _collate_awkward_array_fn(batch, *, collate_fn_map=None):
 
 _nan_warned_vars = set()
 
-
 def _finalize_inputs(table, data_config):
     output = {}
     # copy observer variables before transformation
@@ -38,7 +37,6 @@ def _finalize_inputs(table, data_config):
         for k, params in data_config.preprocess_params.items():
             if params["center"] == "auto":
                 raise ValueError("No valid standardization params for %s" % k)
-
     # try fused path for each input group (standardize + pad + nan_to_num + stack in one kernel)
     fused_vars = set()
     for group_name, var_names in data_config.input_dicts.items():
@@ -55,7 +53,6 @@ def _finalize_inputs(table, data_config):
                     if co is not None and np.any(np.isnan(co[0])):
                         _logger.warning("Variable '%s' contains NaN values (this warning is shown only once)", vn)
                         _nan_warned_vars.add(vn)
-
     # fallback: per-variable transformation for vars not handled by fused path
     for k, params in data_config.preprocess_params.items():
         if k in fused_vars:
@@ -71,7 +68,6 @@ def _finalize_inputs(table, data_config):
                 _logger.warning("Variable '%s' contains NaN values (this warning is shown only once)", k)
                 _nan_warned_vars.add(k)
         table[k] = np.nan_to_num(table[k])
-
     def _to_f32(x):
         if isinstance(x, np.ndarray):
             return x if x.dtype == np.float32 else x.astype("float32")
@@ -95,7 +91,6 @@ def _finalize_inputs(table, data_config):
             arr = table[k]
             output[k] = ak.to_numpy(arr) if isinstance(arr, ak.Array) and arr.ndim == 1 else arr
     return output
-
 
 def _get_reweight_indices(weights, up_sample=True, max_resample=10, weight_scale=1):
     all_indices = np.arange(len(weights))
@@ -409,7 +404,7 @@ class _SimpleIter(object):
 
         filelist, load_ranges = self.load_filelist_and_ranges[self.ipos]
 
-        # _logger.info('Start fetching next batch, len(filelist)=%d, load_ranges=%s'%(len(filelist), load_ranges))
+        #_logger.info('Start fetching next batch, len(filelist)=%d, load_ranges=%s'%(len(filelist), load_ranges))
         if self._async_load:
             self.prefetch = self.executor.submit(
                 _load_next, self._data_config, filelist, load_ranges, self._sampler_options

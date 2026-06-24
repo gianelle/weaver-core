@@ -75,7 +75,7 @@ def _get_content_and_offsets(a):
         offsets = np.asarray(layout.offsets.data)
         inner = layout.content
         # get the raw numpy data from the NumpyArray content
-        content = np.asarray(inner.data)
+        content = np.asarray(inner.content.data)
         if content.ndim != 1:
             return None
         return content, offsets
@@ -107,11 +107,11 @@ def _pad(a, maxlen, value=0, dtype="float32"):
                 x[idx, :n] = np.asarray(s[:n], dtype=dtype)
         return x
 
-
 def _repeat_pad(a, maxlen, dtype="float32"):
     assert isinstance(a, ak.Array)
     if a.ndim == 1:
         a = ak.unflatten(a, 1)
+    result = _get_content_and_offsets(a)
     if result is not None:
         content, offsets = result
         nrows = len(offsets) - 1
@@ -130,7 +130,6 @@ def _repeat_pad(a, maxlen, dtype="float32"):
         row = np.asarray(a[i], dtype=dtype)
         out[i] = row[idx % n]
     return out
-
 
 def _clip(a, a_min, a_max):
     if isinstance(a, np.ndarray) or a.ndim == 1:
@@ -257,11 +256,10 @@ def _fused_pad_and_stack(table, var_names, preprocess_params, dtype="float32"):
     """Fused standardize + clip + pad + nan_to_num + stack for variables sharing the same jagged structure."""
     if not var_names:
         return None
-
     first_result = _get_content_and_offsets(table[var_names[0]])
     if first_result is None:
         return None
-    _, shared_offsets = first_result
+    c, shared_offsets = first_result
 
     nrows = len(shared_offsets) - 1
     n_vars = len(var_names)
@@ -298,7 +296,7 @@ def _fused_pad_and_stack(table, var_names, preprocess_params, dtype="float32"):
         content_f32 = content.astype(np.float32) if content.dtype != np.float32 else content
         content_arrays.append(content_f32)
 
-    content_len = int(shared_offsets[-1])
+    content_len = len(c) # int(shared_offsets[-1])
     all_content = np.zeros(n_vars * content_len, dtype=np.float32)
     content_starts = np.zeros(n_vars, dtype=np.int64)
     for vi in range(n_vars):

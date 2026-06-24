@@ -84,7 +84,6 @@ def _read_parquet(filepath, branches, load_range=None):
     pf = pq.ParquetFile(filepath)
     meta = pf.metadata
     n_rg = meta.num_row_groups
-
     if load_range is not None and n_rg > 1:
         total = meta.num_rows
         start_row = math.trunc(load_range[0] * total)
@@ -115,7 +114,6 @@ def _read_parquet(filepath, branches, load_range=None):
             outputs = outputs[start:stop]
     return outputs
 
-
 def _read_files(
     filelist,
     branches,
@@ -140,7 +138,6 @@ def _read_files(
         else:
             load_ranges = (load_ranges,) * len(filelist)
     assert all(r is None or (len(r) == 2 and 0 <= r[0] < r[1] <= 1) for r in load_ranges)
-
     for filepath, load_range in zip(iterable, load_ranges):
         if load_range is not None and load_range[0] >= load_range[1]:
             continue
@@ -168,7 +165,6 @@ def _read_files(
             _logger.error(traceback.format_exc())
         if a is not None and file_magic is not None:
             import re
-
             for var, value_dict in file_magic.items():
                 if var in a.fields:
                     warn_n_times(
