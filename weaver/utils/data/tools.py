@@ -75,7 +75,8 @@ def _get_content_and_offsets(a):
         offsets = np.asarray(layout.offsets.data)
         inner = layout.content
         # get the raw numpy data from the NumpyArray content
-        content = np.asarray(inner.content.data)
+        content = np.asarray(inner.data)
+        #content = np.asarray(inner.content.data)
         if content.ndim != 1:
             return None
         return content, offsets
@@ -107,29 +108,15 @@ def _pad(a, maxlen, value=0, dtype="float32"):
                 x[idx, :n] = np.asarray(s[:n], dtype=dtype)
         return x
 
-def _repeat_pad(a, maxlen, dtype="float32"):
-    assert isinstance(a, ak.Array)
-    if a.ndim == 1:
-        a = ak.unflatten(a, 1)
-    result = _get_content_and_offsets(a)
-    if result is not None:
-        content, offsets = result
-        nrows = len(offsets) - 1
-        out = np.zeros((nrows, maxlen), dtype=dtype)
-        _repeat_pad_jagged_kernel(content.astype(dtype), offsets, out)
-        return out
-    # fallback for complex layouts
-    counts = np.asarray(ak.num(a))
-    nrows = len(counts)
-    out = np.zeros((nrows, maxlen), dtype=dtype)
-    idx = np.arange(maxlen)
-    for i in range(nrows):
-        n = int(counts[i])
-        if n == 0:
-            continue
-        row = np.asarray(a[i], dtype=dtype)
-        out[i] = row[idx % n]
-    return out
+def _repeat_pad(a, maxlen, shuffle=False, dtype='float32'):
+    x = ak.to_numpy(ak.flatten(a))
+    x = np.tile(x, int(np.ceil(len(a) * maxlen / len(x))))
+    if shuffle:
+        np.random.shuffle(x)
+    x = x[:len(a) * maxlen].reshape((len(a), maxlen))
+    mask = _pad(ak.zeros_like(a), maxlen, value=1)
+    x = _pad(a, maxlen) + mask * x
+    return ak.values_astype(x, dtype)
 
 def _clip(a, a_min, a_max):
     if isinstance(a, np.ndarray) or a.ndim == 1:
@@ -296,7 +283,7 @@ def _fused_pad_and_stack(table, var_names, preprocess_params, dtype="float32"):
         content_f32 = content.astype(np.float32) if content.dtype != np.float32 else content
         content_arrays.append(content_f32)
 
-    content_len = len(c) # int(shared_offsets[-1])
+    content_len = int(shared_offsets[-1]) # len(c)
     all_content = np.zeros(n_vars * content_len, dtype=np.float32)
     content_starts = np.zeros(n_vars, dtype=np.int64)
     for vi in range(n_vars):
