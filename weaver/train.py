@@ -146,6 +146,10 @@ parser.add_argument('--compile', action=argparse.BooleanOptionalAction, default=
                     help='use torch.compile')
 parser.add_argument('--compiler-option', nargs=2, action='append', default=[],
                     help='options to pass to torch.compile, e.g., `--compiler-option dynamic False`')
+parser.add_argument('--compile-optimizer', action=argparse.BooleanOptionalAction, default=False,
+                    help='use torch.compile to compile the optimizer `step` (experimental); reuses `--compiler-option`. '
+                         'The learning rate is wrapped in a Tensor so that LR-scheduler updates do not trigger '
+                         'recompilation. Works best with foreach/fused-capable optimizers (e.g. AdamW)')
 parser.add_argument('--gpus', type=str, default='0',
                     help='device for the training/testing; to use CPU, set to empty string (""); to use multiple gpu, set it as a comma separated list, e.g., `1,2,3,4`')
 parser.add_argument('--predict-gpus', type=str, default=None,
@@ -177,6 +181,11 @@ parser.add_argument('--backend', type=str, choices=['gloo', 'nccl', 'mpi'], defa
                     help='backend for distributed training')
 parser.add_argument('--cross-validation', type=str, default=None,
                     help='enable k-fold cross validation; input format: `variable_name%%k`')
+parser.add_argument('--start-from-fold', type=int, default=0,
+                    help='when using `--cross-validation`, start (or resume) from this fold index '
+                         'instead of fold 0 -- useful for resuming a crashed cross-validation run; '
+                         'combine with `--load-epoch` to also resume the fold that was mid-training '
+                         'when it crashed')
 parser.add_argument('--auto-clean', action=argparse.BooleanOptionalAction, default=False,
                     help='automatically remove the previous checkpoints, keeping only the last epoch and the best epoch')
 # fmt: on
@@ -433,16 +442,47 @@ def onnx(args):
     if not os.path.dirname(args.export_onnx):
         args.export_onnx = os.path.join(os.path.dirname(model_path), args.export_onnx)
     os.makedirs(os.path.dirname(args.export_onnx), exist_ok=True)
-    inputs = tuple(torch.ones(model_info["input_shapes"][k], dtype=torch.float32) for k in model_info["input_names"])
-    torch.onnx.export(
-        model,
-        inputs,
-        args.export_onnx,
+
+    # Build the dummy inputs used to trace the model. Tracing through an axis of
+    # size 1 makes the exporter specialize/bake that dimension into the graph,
+    # even when it is declared dynamic -- so the exported model would then only
+    # accept that exact size. To keep declared-dynamic axes truly dynamic, trace
+    # with size 2 for any dynamic axis whose configured size is 1 (e.g. the batch
+    # dimension, which is typically 1 in the network config's `input_shapes`).
+    dynamic_axes = model_info.get("dynamic_axes", None)
+
+    def _trace_shape(name, shape):
+        shape = list(shape)
+        axes = (dynamic_axes or {}).get(name, None)
+        if axes is not None:
+            # `dynamic_axes` entries may be a dict {axis: name} or a list [axis, ...]
+            axis_indices = axes.keys() if isinstance(axes, dict) else axes
+            for ax in axis_indices:
+                if shape[ax] == 1:
+                    shape[ax] = 2
+        return shape
+
+    inputs = tuple(
+        torch.ones(_trace_shape(k, model_info["input_shapes"][k]), dtype=torch.float32)
+        for k in model_info["input_names"]
+    )
+    export_kwargs = dict(
         input_names=model_info["input_names"],
         output_names=model_info["output_names"],
-        dynamic_axes=model_info.get("dynamic_axes", None),
+        dynamic_axes=dynamic_axes,
         opset_version=args.onnx_opset,
     )
+    # Use the legacy TorchScript-based exporter: the models' ONNX code paths
+    # (e.g. `for_onnx` pairwise embedding, manual attention masks) are written
+    # for tracing, and the newer TorchDynamo exporter (the default since recent
+    # PyTorch versions) cannot handle their data-dependent shapes and adds an
+    # `onnxscript` dependency. The `dynamo` kwarg only exists on newer PyTorch,
+    # so set it conditionally for backward compatibility.
+    import inspect
+
+    if "dynamo" in inspect.signature(torch.onnx.export).parameters:
+        export_kwargs["dynamo"] = False
+    torch.onnx.export(model, inputs, args.export_onnx, **export_kwargs)
     _logger.info("ONNX model saved to %s", args.export_onnx)
 
     preprocessing_json = os.path.join(os.path.dirname(args.export_onnx), "preprocess.json")
@@ -525,6 +565,16 @@ def profile(args, model, model_info, device):
 
 
 def init_opt(args, model, **optimizer_options):
+    # When compiling the optimizer step, the learning rate must be a Tensor: torch.compile guards on the
+    # value of a Python-float lr and would recompile every time the LR scheduler changes it (every step for
+    # the per-step schedulers). A Tensor lr is updated in-place by the schedulers, so its identity is stable.
+    compile_optimizer = getattr(args, "compile_optimizer", False)
+    if compile_optimizer:
+        lr_device = next((p.device for p in model.parameters()), None)
+        start_lr = torch.tensor(args.start_lr, device=lr_device)
+    else:
+        start_lr = args.start_lr
+
     names_lr_mult = []
     if "weight_decay" in optimizer_options or "lr_mult" in optimizer_options:
         # https://github.com/rwightman/pytorch-image-models/blob/master/timm/optim/optim_factory.py#L31
@@ -572,8 +622,8 @@ def init_opt(args, model, **optimizer_options):
         parameters = [
             {"params": no_decay_1x, "weight_decay": 0.0},
             {"params": decay_1x, "weight_decay": wd},
-            {"params": no_decay_mult, "weight_decay": 0.0, "lr": args.start_lr * mult_factor},
-            {"params": decay_mult, "weight_decay": wd, "lr": args.start_lr * mult_factor},
+            {"params": no_decay_mult, "weight_decay": 0.0, "lr": start_lr * mult_factor},
+            {"params": decay_mult, "weight_decay": wd, "lr": start_lr * mult_factor},
         ]
         _logger.info("Parameters excluded from weight decay:\n - %s", "\n - ".join(names_no_decay))
         if len(names_lr_mult):
@@ -586,20 +636,20 @@ def init_opt(args, model, **optimizer_options):
     if args.optimizer.lower() == "ranger":
         from weaver.utils.nn.optimizer.ranger import Ranger
 
-        opt = Ranger(parameters, lr=args.start_lr, **optimizer_options)
+        opt = Ranger(parameters, lr=start_lr, **optimizer_options)
     elif args.optimizer.lower() == "adam":
-        opt = torch.optim.Adam(parameters, lr=args.start_lr, **optimizer_options)
+        opt = torch.optim.Adam(parameters, lr=start_lr, **optimizer_options)
     elif args.optimizer.lower() == "adamw":
         if "betas" not in optimizer_options:
             optimizer_options["betas"] = (0.95, 0.999)
         if "weight_decay" not in optimizer_options:
             optimizer_options["weight_decay"] = 0
         _logger.info(f"Using AdamW optimizer w/ options: {str(optimizer_options)}")
-        opt = torch.optim.AdamW(parameters, lr=args.start_lr, **optimizer_options)
+        opt = torch.optim.AdamW(parameters, lr=start_lr, **optimizer_options)
     elif args.optimizer.lower() == "radam":
-        opt = torch.optim.RAdam(parameters, lr=args.start_lr, **optimizer_options)
+        opt = torch.optim.RAdam(parameters, lr=start_lr, **optimizer_options)
     else:
-        opt = getattr(torch.optim, args.optimizer)(parameters, lr=args.start_lr, **optimizer_options)
+        opt = getattr(torch.optim, args.optimizer)(parameters, lr=start_lr, **optimizer_options)
 
     if args.load_epoch is not None:
         load_checkpoint(args, model, opt)
@@ -691,6 +741,18 @@ def init_opt(args, model, **optimizer_options):
                 last_epoch=-1 if args.load_epoch is None else args.load_epoch,
             )
             scheduler._update_per_step = True  # mark it to update the lr every step, instead of every epoch
+
+    if compile_optimizer:
+        compiler_options = {k: ast.literal_eval(v) for k, v in args.compiler_option}
+        _logger.info("Compiling the optimizer step with torch.compile, options: %s" % str(compiler_options))
+        # Wrap `step` in place so the training loop keeps calling `opt.step()` unchanged. `torch.compile`
+        # captures the current `step` callable, so this does not recurse, and `grad_scaler.step(opt)` (fp16
+        # AMP) still routes through the compiled step. This must run *after* the scheduler is constructed:
+        # LR schedulers patch `opt.step` (via `__func__`) at init time and require it to still be a bound
+        # method. The Tensor lr (see `start_lr` above) keeps the scheduler's per-step lr updates from
+        # triggering recompilation.
+        opt.step = torch.compile(opt.step, **compiler_options)
+
     return opt, scheduler
 
 
@@ -1263,7 +1325,12 @@ def main():
         load_model = args.load_model_weights or None
         var_name, kfold = args.cross_validation.split("%")
         kfold = int(kfold)
-        for i in range(kfold):
+        if not (0 <= args.start_from_fold < kfold):
+            raise RuntimeError(
+                "--start-from-fold (%d) must be in [0, %d) given --cross-validation=%s"
+                % (args.start_from_fold, kfold, args.cross_validation)
+            )
+        for i in range(args.start_from_fold, kfold):
             _logger.info(f"\n=== Running cross validation, fold {i} of {kfold} ===")
             opts = copy.deepcopy(args)
             opts.model_prefix = os.path.join(f"{model_dir}_fold{i}", model_fn)
@@ -1274,6 +1341,11 @@ def main():
             opts.extra_selection_test = f"{var_name}%{kfold}=={i}"
             if load_model and "{fold}" in load_model:
                 opts.load_model_weights = load_model.replace("{fold}", f"fold{i}")
+            if i != args.start_from_fold:
+                # `--load-epoch` (if given) only applies to the fold we're resuming into --
+                # it may have a partial checkpoint from the crash. Every later fold hasn't
+                # started training yet, so it must not try to load a checkpoint that doesn't exist.
+                opts.load_epoch = None
 
             _main(opts)
     else:
